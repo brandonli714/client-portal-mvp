@@ -1,8 +1,7 @@
 // src/pages/Dashboard.tsx
 import React, { useState, useMemo } from 'react';
 import {
-  Flex, Heading, Select, VStack, Button, HStack, useDisclosure, Input,
-  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, FormControl, FormLabel, ModalFooter, ModalCloseButton,
+  Flex, Heading, Select, VStack,
   Tabs, TabList, Tab, TabPanels, TabPanel,
 } from '@chakra-ui/react';
 import { generateFinancialData } from '../data/financial-data';
@@ -27,14 +26,12 @@ export const DashboardPage = () => {
     isLoading,
     startAnalysis,
     generatedModifications,
+    setGeneratedModifications, // Keep this for passing to the modal
     applyForecast,
     forecastData,
     clearForecast,
     isPlanning,
   } = useForecastingAI(allData);
-
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const [newScenarioName, setNewScenarioName] = useState('');
 
   const actualDataForYear = useMemo(() => {
     return allData.filter(d => d.date.getFullYear() === selectedYear);
@@ -47,7 +44,6 @@ export const DashboardPage = () => {
 
   const totals = useMemo(() => {
     const dataToUse = forecastDataForYear || actualDataForYear;
-    if (!dataToUse) return { revenue: 0, grossProfit: 0, netIncome: 0 };
     return dataToUse.reduce((acc, data) => {
       acc.revenue += data.revenue.total;
       acc.grossProfit += data.grossProfit;
@@ -56,49 +52,37 @@ export const DashboardPage = () => {
     }, { revenue: 0, grossProfit: 0, netIncome: 0 });
   }, [actualDataForYear, forecastDataForYear]);
 
-  const handleCreateScenario = () => {
-    if (newScenarioName.trim()) {
-      // This function needs to be implemented or connected to the hook
-      // For now, we'll just log it and close the modal.
-      console.log("Creating new scenario:", newScenarioName);
-      setNewScenarioName('');
-      onClose();
-    }
-  };
-
   return (
-    <>
-      <VStack spacing={6} align="stretch">
-        <Flex justifyContent="space-between" alignItems="center">
-          <Heading as="h2" size="xl" color="gray.700">Brandon's Tacos</Heading>
-          <Select w="200px" value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))} bg="white">
-            {availableYears.map(year => <option key={year} value={year}>{year} Financials</option>)}
-          </Select>
-        </Flex>
+    <VStack spacing={6} align="stretch" p={8}>
+      <Flex justifyContent="space-between" alignItems="center">
+        <Heading as="h2" size="xl" color="gray.700">Brandon's Tacos</Heading>
+        <Select w="200px" value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))} bg="white">
+          {availableYears.map(year => <option key={year} value={year}>{year} Financials</option>)}
+        </Select>
+      </Flex>
 
-        <ScenarioPlanner onAnalyze={startAnalysis} isPlanning={isPlanning} onClear={clearForecast} />
+      <ScenarioPlanner onAnalyze={startAnalysis} isPlanning={isPlanning} onClear={clearForecast} />
 
-        <Tabs colorScheme="blue" variant="enclosed">
-          <TabList>
-            <Tab>Dashboard</Tab>
-            <Tab>Financial Statements</Tab>
-          </TabList>
-          <TabPanels>
-            <TabPanel p={0} pt={6}>
-              <VStack spacing={6}>
-                <SummaryCards totalRevenue={totals.revenue} totalGrossProfit={totals.grossProfit} netIncome={totals.netIncome} />
-                {isPlanning && forecastDataForYear && (
-                  <VarianceWaterfallChart actualData={actualDataForYear} forecastData={forecastDataForYear} />
-                )}
-                <MonthlyChart actualData={actualDataForYear} forecastData={forecastDataForYear} />
-              </VStack>
-            </TabPanel>
-            <TabPanel p={0} pt={6}>
-              <FinancialStatementTable actualData={actualDataForYear} forecastData={forecastDataForYear} />
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
-      </VStack>
+      <Tabs colorScheme="blue" variant="enclosed">
+        <TabList>
+          <Tab>Dashboard</Tab>
+          <Tab>Financial Statements</Tab>
+        </TabList>
+        <TabPanels>
+          <TabPanel p={0} pt={6}>
+            <VStack spacing={6}>
+              <SummaryCards totalRevenue={totals.revenue} totalGrossProfit={totals.grossProfit} netIncome={totals.netIncome} />
+              {isPlanning && forecastDataForYear && (
+                <VarianceWaterfallChart actualData={actualDataForYear} forecastData={forecastDataForYear} />
+              )}
+              <MonthlyChart actualData={actualDataForYear} forecastData={forecastDataForYear} />
+            </VStack>
+          </TabPanel>
+          <TabPanel p={0} pt={6}>
+            <FinancialStatementTable actualData={actualDataForYear} forecastData={forecastDataForYear} />
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
 
       <AssumptionsModal
         isOpen={isModalOpen}
@@ -106,7 +90,8 @@ export const DashboardPage = () => {
         isLoading={isLoading}
         assumptions={generatedModifications}
         onApply={applyForecast}
+        onAssumptionChange={setGeneratedModifications}
       />
-    </>
+    </VStack>
   );
 };
