@@ -1,6 +1,6 @@
 // src/hooks/useForecasting.ts
 import { useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from 'uuid/dist/v4.js';
 import { MonthlyFinancials } from '../data/financial-data';
 
 // --- A new, richer interface for our assumptions ---
