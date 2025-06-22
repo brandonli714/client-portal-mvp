@@ -1,102 +1,118 @@
 // src/pages/Forecasting.tsx
 import React, { useMemo } from 'react';
-import { VStack } from '@chakra-ui/react';
+import { VStack, Button, Box, Heading } from '@chakra-ui/react';
 import { generateFinancialData } from '../utils/dataGenerator';
 import { SummaryCards } from '../components/SummaryCards';
 import { MonthlyChart } from '../components/MonthlyChart';
 import { useForecastingAI } from '../hooks/useForecasting';
 import { VarianceWaterfallChart } from '../components/VarianceWaterfallChart';
 import { AssumptionsModal } from '../components/AssumptionsModal';
-import { ChartableData } from '../types';
+import { ChartableData, DataType } from '../types';
 import { MonthlyFinancials } from '../MonthlyFinancials';
-import { ScenarioPlanner } from '../components/ScenarioPlanner';
 
-// This data generation will be shared, but for now, we'll keep it simple
+// Generate the data once
 const allData = generateFinancialData();
 
-function transformToChartable(data: MonthlyFinancials[], type: 'actual' | 'forecast'): ChartableData[] {
+// THIS FUNCTION IS NOW CORRECTED TO MATCH THE CHARTABLEDATA TYPE
+const convertToChartable = (data: MonthlyFinancials[], type: DataType): ChartableData[] => {
   return data.map(d => ({
     date: d.date,
+    month: d.date.toLocaleString('default', { month: 'short' }),
     revenue: d.revenue.total,
-    grossProfit: d.grossProfit,
+    cogs: d.cogs.total,
+    opex: d.expenses.total,
+    grossProfit: d.revenue.total - d.cogs.total,
     netIncome: d.netIncome,
     type,
-    month: d.date.toLocaleString('default', { month: 'short' }) + ` '${d.date.getFullYear().toString().slice(2)}`
   }));
-}
+};
 
 export const ForecastingPage = () => {
-  // We'll use the full dataset here for forecasting purposes
-  const actualData = useMemo(() => allData, []);
-
+  const actuals = useMemo(() => allData.slice(0, 12), []);
+  
+  // HOOK IS NOW CORRECTLY DESTRUCTURED
   const {
     isModalOpen,
+    openModal: startConversation, // <-- RENAMED HERE
     closeModal,
     isLoading,
-    startAnalysis,
-    generatedModifications,
-    updateModification,
-    applyForecast,
+    messages,
+    activeModifications,
+    assumptions,
     forecastData,
+    sendMessage,
+    updateAssumption,
+    updateModification,
+    runAndApplyForecast,
     clearForecast,
-    isPlanning
-  } = useForecastingAI(actualData);
+  } = useForecastingAI(actuals);
 
-  const forecastTotals = useMemo(() => {
-    if (!isPlanning || !forecastData) return null;
+  // DATA IS NOW CONVERTED TO THE CORRECT TYPE FOR CHARTS
+  const chartableActuals = useMemo(() => convertToChartable(actuals, 'actual'), [actuals]);
+  const chartableForecast = useMemo(() => forecastData ? convertToChartable(forecastData, 'forecast') : null, [forecastData]);
 
-    return forecastData.reduce((acc, data) => {
-      acc.revenue += data.revenue.total;
-      acc.grossProfit += data.grossProfit;
-      acc.netIncome += data.netIncome;
-      return acc;
-    }, { revenue: 0, grossProfit: 0, netIncome: 0, ytdRevenue: 0, ytdNetIncome: 0 });
-  }, [forecastData, isPlanning]);
+  // The combined data for the main chart
+  const combinedChartData = chartableForecast ? [...chartableActuals, ...chartableForecast] : chartableActuals;
 
-  const comparisonDisplayData = useMemo(() => {
-    // Always show TTM actuals as the base for comparison
-    const actualChartable = transformToChartable(actualData.slice(-12), 'actual');
-    if (isPlanning && forecastData) {
-      const forecastChartable = transformToChartable(forecastData, 'forecast');
-      return [...actualChartable, ...forecastChartable];
-    }
-    // If not planning, the chart inside the forecast tab will just show the TTM actuals
-    return actualChartable;
-  }, [actualData, forecastData, isPlanning]);
-
+  // Calculate totals for SummaryCards
+  const summarySource = forecastData || actuals;
+  const totalRevenue = summarySource.reduce((sum, d) => sum + d.revenue.total, 0);
+  const totalCogs = summarySource.reduce((sum, d) => sum + d.cogs.total, 0);
+  const totalNetIncome = summarySource.reduce((sum, d) => sum + d.netIncome, 0);
 
   return (
-    <>
-      <VStack spacing={8} align="stretch">
-        <ScenarioPlanner 
-            onAnalyze={startAnalysis} 
-            onClear={clearForecast} 
-            isPlanning={isPlanning} 
-        />
-        {isPlanning && forecastData && forecastTotals && (
-          <VStack spacing={6} align="stretch">
-            <SummaryCards
-              totalRevenue={forecastTotals.revenue}
-              totalGrossProfit={forecastTotals.grossProfit}
-              netIncome={forecastTotals.netIncome}
-              ytdRevenue={0} // Not applicable
-              ytdNetIncome={0} // Not applicable
-              isForecast={true}
-            />
-            <VarianceWaterfallChart actualData={actualData.slice(-12)} forecastData={forecastData} />
-            <MonthlyChart data={comparisonDisplayData} isForecast={true}/>
-          </VStack>
+    <VStack spacing={6} align="stretch" p={8}>
+      <Box>
+        <Heading size="lg" mb={4}>AI Scenario Planner</Heading>
+        {/* MODAL IS NOW OPENED WITH THE CORRECT FUNCTION */}
+        <Button onClick={startConversation} colorScheme="blue">
+          Create New Forecast
+        </Button>
+        {forecastData && (
+          <Button onClick={clearForecast} colorScheme="gray" ml={4}>
+            Clear Forecast
+          </Button>
         )}
-      </VStack>
+      </Box>
+      
+      {/* SUMMARY CARDS NOW RECEIVES THE CORRECT PROPS */}
+      <SummaryCards
+        totalRevenue={totalRevenue}
+        totalGrossProfit={totalRevenue - totalCogs}
+        netIncome={totalNetIncome}
+        isForecast={!!forecastData}
+        ytdRevenue={0} // YTD data not applicable in forecast view
+        ytdNetIncome={0} // YTD data not applicable in forecast view
+      />
+
+      {/* MONTHLY CHART NOW RECEIVES THE CORRECT PROPS */}
+      <MonthlyChart
+        data={combinedChartData}
+        isForecast={!!forecastData}
+      />
+
+      {/* WATERFALL CHART NOW RECEIVES THE CORRECT PROPS */}
+      {forecastData && (
+        <VarianceWaterfallChart
+          actualData={actuals}
+          forecastData={forecastData}
+        />
+      )}
+
+      {/* SCENARIO PLANNER REMOVED AS IT IS OBSOLETE */}
 
       <AssumptionsModal
         isOpen={isModalOpen}
         onClose={closeModal}
         isLoading={isLoading}
-        assumptions={generatedModifications}
-        onApply={applyForecast}
-        onAssumptionChange={updateModification}
+        messages={messages}
+        activeModifications={activeModifications}
+        assumptions={assumptions}
+        onSendMessage={sendMessage}
+        onUpdateAssumption={updateAssumption}
+        onUpdateModification={updateModification}
+        onApply={runAndApplyForecast}
       />
-    </>
+    </VStack>
   );
 };

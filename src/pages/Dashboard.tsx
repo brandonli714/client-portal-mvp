@@ -8,7 +8,7 @@ import { generateFinancialData } from '../utils/dataGenerator';
 import { FinancialStatementTable } from '../components/FinancialStatementTable';
 import { SummaryCards } from '../components/SummaryCards';
 import { MonthlyChart } from '../components/MonthlyChart';
-import { ChartableData } from '../types';
+import { ChartableData, DataType } from '../types';
 import { MonthlyFinancials } from '../MonthlyFinancials';
 
 // Generate the data once
@@ -19,9 +19,11 @@ function transformToChartable(data: MonthlyFinancials[]): ChartableData[] {
   return data.map(d => ({
     date: d.date,
     revenue: d.revenue.total,
-    grossProfit: d.grossProfit,
+    cogs: d.cogs.total,
+    opex: d.expenses.total,
+    grossProfit: d.revenue.total - d.cogs.total,
     netIncome: d.netIncome,
-    type: 'actual', // Only actual data on the dashboard chart
+    type: 'actual',
     month: d.date.toLocaleString('default', { month: 'short' }) + ` '${d.date.getFullYear().toString().slice(2)}`
   }));
 }
@@ -44,9 +46,9 @@ export const DashboardPage = () => {
     const currentMonthIndex = new Date().getMonth();
     const isCurrentYear = selectedYear === new Date().getFullYear();
 
-    const annualTotals = dataToUse.reduce((acc: { revenue: number, grossProfit: number, netIncome: number }, data) => {
+    const annualTotals = dataToUse.reduce((acc, data) => {
         acc.revenue += data.revenue.total;
-        acc.grossProfit += data.grossProfit;
+        acc.grossProfit += (data.revenue.total - data.cogs.total);
         acc.netIncome += data.netIncome;
         return acc;
     }, { revenue: 0, grossProfit: 0, netIncome: 0 });
@@ -84,7 +86,7 @@ export const DashboardPage = () => {
         </TabList>
         <TabPanels>
           <TabPanel p={0} pt={6}>
-            <VStack spacing={6}>
+            <VStack spacing={6} align="stretch">
               <SummaryCards
                 totalRevenue={totals.revenue}
                 totalGrossProfit={totals.grossProfit}
