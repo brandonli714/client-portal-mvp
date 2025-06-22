@@ -1,7 +1,30 @@
 // src/components/layout/Sidebar.tsx
 import React from 'react';
 import { Box, VStack, Heading, Link, Icon } from '@chakra-ui/react';
-import { MdDashboard, MdAssessment } from 'react-icons/md';
+import { MdDashboard, MdAssessment, MdTimeline } from 'react-icons/md';
+import { NavLink } from 'react-router-dom';
+
+const activeLinkStyle = {
+  bg: 'whiteAlpha.400',
+  fontWeight: 'bold',
+};
+
+const NavItem = ({ to, icon, children }: { to: string; icon: React.ElementType; children: React.ReactNode }) => (
+    <Link
+        as={NavLink}
+        to={to}
+        p={3}
+        borderRadius="md"
+        display="flex"
+        alignItems="center"
+        _hover={{ bg: 'whiteAlpha.200' }}
+        _activeLink={activeLinkStyle}
+    >
+        <Icon as={icon} mr={3} w={5} h={5} />
+        {children}
+    </Link>
+);
+
 
 export const Sidebar = () => {
   return (
@@ -18,32 +41,12 @@ export const Sidebar = () => {
     >
       <VStack align="stretch" spacing={8}>
         <Heading as="h1" size="md" color="whiteAlpha.900">
-          Client Portal
+          Brandon's Tacos
         </Heading>
         <VStack align="stretch" spacing={4}>
-          <Link
-            href="#"
-            bg="whiteAlpha.400"
-            p={3}
-            borderRadius="md"
-            fontWeight="bold"
-            display="flex"
-            alignItems="center"
-          >
-            <Icon as={MdDashboard} mr={3} w={5} h={5} />
-            Dashboard
-          </Link>
-          <Link
-            href="#"
-            p={3}
-            borderRadius="md"
-            _hover={{ bg: 'whiteAlpha.200' }}
-            display="flex"
-            alignItems="center"
-          >
-            <Icon as={MdAssessment} mr={3} w={5} h={5} />
-            Reports
-          </Link>
+            <NavItem to="/" icon={MdDashboard}>Dashboard</NavItem>
+            <NavItem to="/forecasting" icon={MdTimeline}>Forecasting</NavItem>
+            <NavItem to="/reports" icon={MdAssessment}>Reports</NavItem>
         </VStack>
       </VStack>
     </Box>

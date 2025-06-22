@@ -7,9 +7,9 @@ import { MonthlyFinancials } from '../MonthlyFinancials';
 export interface InteractiveModification {
   id: string;
   // A function that creates the description based on the current value
-  descriptionTemplate: (value: number) => string; 
+  descriptionTemplate: (value: number) => string;
   // The AI's reasoning for its initial suggestion
-  explanation: string; 
+  explanation: string;
   // All the data needed for the slider
   parameter: {
     value: number;
@@ -67,7 +67,7 @@ const analyzeTextForModifications = (text: string, baseData: MonthlyFinancials[]
 
     if (!isNaN(quantity)) {
         const lastMonth = baseData[baseData.length - 1];
-        const estimatedEmployees = Math.round(lastMonth.revenue.total / 15000); 
+        const estimatedEmployees = Math.round(lastMonth.revenue.total / 15000);
         const averageWage = estimatedEmployees > 0 ? lastMonth.expenses.labor.wages / estimatedEmployees : 5000;
         const wageIncrease = quantity * averageWage;
 
@@ -93,27 +93,49 @@ const analyzeTextForModifications = (text: string, baseData: MonthlyFinancials[]
   return modifications;
 };
 
-// --- The forecasting engine ---
+// --- The NEW forecasting engine ---
 const runForecastEngine = (baseData: MonthlyFinancials[], modifications: InteractiveModification[]): MonthlyFinancials[] => {
-  return baseData.map(month => {
-    let newMonth = JSON.parse(JSON.stringify(month)) as MonthlyFinancials;
-    newMonth.date = new Date(newMonth.date);
+  const forecast: MonthlyFinancials[] = [];
+  if (baseData.length === 0) return [];
 
+  let lastMonth = JSON.parse(JSON.stringify(baseData[baseData.length - 1])) as MonthlyFinancials;
+
+  for (let i = 1; i <= 12; i++) {
+    // Create a new month based on the previous one
+    let newMonth = JSON.parse(JSON.stringify(lastMonth)) as MonthlyFinancials;
+    
+    // Increment the date
+    const newDate = new Date(lastMonth.date);
+    newDate.setUTCMonth(newDate.getUTCMonth() + 1);
+    newMonth.date = newDate;
+
+    // Apply a baseline growth factor (e.g., 0.5% monthly revenue growth)
+    const growthFactor = 1.005;
+    newMonth.revenue.inStore *= growthFactor;
+    newMonth.revenue.delivery *= growthFactor;
+    newMonth.revenue.catering *= growthFactor;
+
+    // Apply user-defined modifications from the scenario
     for (const mod of modifications) {
       newMonth = mod.apply(newMonth, mod.parameter.value);
     }
 
-    // Recalculate totals
+    // Recalculate all totals from the top down
+    newMonth.revenue.total = newMonth.revenue.inStore + newMonth.revenue.delivery + newMonth.revenue.catering;
     newMonth.cogs.total = newMonth.cogs.food + newMonth.cogs.beverages + newMonth.cogs.packaging;
     newMonth.grossProfit = newMonth.revenue.total - newMonth.cogs.total;
     newMonth.expenses.labor.total = newMonth.expenses.labor.wages + newMonth.expenses.labor.salaries;
+    newMonth.expenses.gAndA.total = newMonth.expenses.gAndA.posFees + newMonth.expenses.gAndA.deliveryCommissions + newMonth.expenses.gAndA.insurance + newMonth.expenses.gAndA.repairs;
     newMonth.expenses.total = newMonth.expenses.labor.total + newMonth.expenses.marketing + newMonth.expenses.rentAndUtilities.total + newMonth.expenses.gAndA.total;
     newMonth.operatingIncome = newMonth.grossProfit - newMonth.expenses.total;
     const taxes = newMonth.operatingIncome > 0 ? newMonth.operatingIncome * 0.25 : 0;
     newMonth.netIncome = newMonth.operatingIncome - taxes;
 
-    return newMonth;
-  });
+    forecast.push(newMonth);
+    lastMonth = newMonth; // The next month starts from the one we just calculated
+  }
+
+  return forecast;
 };
 
 // --- The main hook to manage state ---
@@ -129,15 +151,19 @@ export const useForecastingAI = (baseData: MonthlyFinancials[]) => {
     setIsModalOpen(true);
 
     setTimeout(() => {
-      const modifications = analyzeTextForModifications(text, baseData);
+      // We only need the latest 12 months for the AI to base its assumptions on
+      const analysisData = baseData.slice(-12);
+      const modifications = analyzeTextForModifications(text, analysisData);
       setGeneratedModifications(modifications);
       setIsLoading(false);
     }, 1500);
   };
 
-  const applyForecast = (approvedModifications: InteractiveModification[]) => { 
+  const applyForecast = (approvedModifications: InteractiveModification[]) => {
     if (approvedModifications.length > 0) {
-        const newForecastData = runForecastEngine(baseData, approvedModifications);
+        // The engine now uses the latest 12 months as its starting point
+        const forecastBase = baseData.slice(-12);
+        const newForecastData = runForecastEngine(forecastBase, approvedModifications);
         setForecastData(newForecastData);
     } else {
         setForecastData(null);
@@ -150,9 +176,9 @@ export const useForecastingAI = (baseData: MonthlyFinancials[]) => {
   };
 
   const updateModification = (id: string, newValue: number) => {
-    setGeneratedModifications(currentMods => 
-      currentMods.map(mod => 
-        mod.id === id 
+    setGeneratedModifications(currentMods =>
+      currentMods.map(mod =>
+        mod.id === id
           ? { ...mod, parameter: { ...mod.parameter, value: newValue } }
           : mod
       )

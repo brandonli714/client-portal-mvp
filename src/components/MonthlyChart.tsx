@@ -1,7 +1,7 @@
 // src/components/MonthlyChart.tsx
 import React from 'react';
 import { Box, Heading } from '@chakra-ui/react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { ChartableData } from '../types';
 
 interface MonthlyChartProps {
@@ -10,7 +10,7 @@ interface MonthlyChartProps {
 }
 
 const formatCurrencyForAxis = (value: number) => {
-    if (value >= 1000) {
+    if (Math.abs(value) >= 1000) {
         return `$${(value / 1000).toFixed(0)}k`;
     }
     return `$${value}`;
@@ -27,10 +27,10 @@ export const MonthlyChart: React.FC<MonthlyChartProps> = ({ data, isForecast }) 
     }
     if (item.type === 'actual') {
       monthData['Actual Revenue'] = item.revenue;
-      monthData['Actual Gross Profit'] = item.grossProfit;
+      monthData['Actual Net Income'] = item.netIncome;
     } else {
       monthData['Forecast Revenue'] = item.revenue;
-      monthData['Forecast Gross Profit'] = item.grossProfit;
+      monthData['Forecast Net Income'] = item.netIncome;
     }
     return acc;
   }, [] as any[]);
@@ -47,15 +47,25 @@ export const MonthlyChart: React.FC<MonthlyChartProps> = ({ data, isForecast }) 
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="month" stroke="gray.500" />
                 <YAxis stroke="gray.500" tickFormatter={formatCurrencyForAxis} />
-                <Tooltip
-                    formatter={(value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)}
+                <Tooltip 
+                    formatter={(value: number, name: string) => {
+                        const formattedValue = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+                        if (name === 'Actual Net Income' || name === 'Forecast Net Income') {
+                            return [formattedValue, 'Net Income'];
+                        }
+                        if (name === 'Actual Revenue' || name === 'Forecast Revenue') {
+                            return [formattedValue, 'Revenue'];
+                        }
+                        return [formattedValue, name];
+                    }}
                     cursor={{fill: 'rgba(230, 230, 230, 0.5)'}}
                 />
                 <Legend />
-                <Bar dataKey="Actual Revenue" fill={isForecast ? "#CBD5E0" : "#4299E1"} name="Revenue" />
-                <Bar dataKey="Actual Gross Profit" fill={isForecast ? "#A0AEC0" : "#48BB78"} name="Gross Profit" />
+                <ReferenceLine y={0} stroke="#000" strokeWidth={1} />
+                <Bar dataKey="Actual Revenue" fill={isForecast ? "#a0aec0" : "#4299E1"} name="Revenue" />
+                <Bar dataKey="Actual Net Income" fill={isForecast ? "#BEE3F8" : "#48BB78"} name="Net Income" />
                 {isForecast && <Bar dataKey="Forecast Revenue" fill="#4299E1" name="Forecast Revenue" />}
-                {isForecast && <Bar dataKey="Forecast Gross Profit" fill="#48BB78" name="Forecast Gross Profit"/>}
+                {isForecast && <Bar dataKey="Forecast Net Income" fill="#48BB78" name="Forecast Net Income"/>}
             </BarChart>
         </ResponsiveContainer>
     </Box>
