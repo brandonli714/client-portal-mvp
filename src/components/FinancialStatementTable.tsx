@@ -11,11 +11,10 @@ import {
   Text,
   Box,
 } from '@chakra-ui/react';
-import { MonthlyFinancials } from '../data/financial-data';
+import { MonthlyFinancials } from '../MonthlyFinancials';
 
 interface FinancialStatementTableProps {
-  actualData: MonthlyFinancials[];
-  forecastData: MonthlyFinancials[] | null;
+  data: MonthlyFinancials[];
 }
 
 const formatCurrency = (value: number) => {
@@ -29,14 +28,12 @@ const formatCurrency = (value: number) => {
 
 const FinancialRow: React.FC<{
   label: string;
-  actualData: number[];
-  forecastData?: number[];
+  data: number[];
   isBold?: boolean;
   isSubItem?: boolean;
   isSubSubItem?: boolean;
-}> = ({ label, actualData, forecastData, isBold = false, isSubItem = false, isSubSubItem = false }) => {
-  const actualTotal = actualData.reduce((sum, val) => sum + val, 0);
-  const forecastTotal = forecastData?.reduce((sum, val) => sum + val, 0);
+}> = ({ label, data, isBold = false, isSubItem = false, isSubSubItem = false }) => {
+  const total = data.reduce((sum, val) => sum + val, 0);
 
   const textStyle: React.CSSProperties = {
       paddingLeft: isSubSubItem ? '40px' : isSubItem ? '20px' : '0px',
@@ -45,92 +42,74 @@ const FinancialRow: React.FC<{
   return (
     <Tr fontWeight={isBold ? 'bold' : 'normal'} bg={isBold ? 'gray.50' : 'transparent'}>
       <Td style={textStyle}><Text as={isBold ? 'b' : 'span'}>{label}</Text></Td>
-      {actualData.map((value, index) => (
-        <React.Fragment key={index}>
-            <Td isNumeric>{formatCurrency(value)}</Td>
-            {forecastData && <Td isNumeric color="blue.600">{formatCurrency(forecastData[index])}</Td>}
-        </React.Fragment>
+      {data.map((value, index) => (
+        <Td key={index} isNumeric>{formatCurrency(value)}</Td>
       ))}
-      <Td isNumeric fontWeight="bold">{formatCurrency(actualTotal)}</Td>
-      {forecastData && forecastTotal !== undefined && <Td isNumeric fontWeight="bold" color="blue.600">{formatCurrency(forecastTotal)}</Td>}
+      <Td isNumeric fontWeight="bold">{formatCurrency(total)}</Td>
     </Tr>
   );
 };
 
-export const FinancialStatementTable: React.FC<FinancialStatementTableProps> = ({ actualData, forecastData }) => {
-  if (!actualData || actualData.length === 0) {
+export const FinancialStatementTable: React.FC<FinancialStatementTableProps> = ({ data }) => {
+  if (!data || data.length === 0) {
     return <Text>No data available for the selected year.</Text>;
   }
 
-  const isPlanning = forecastData !== null;
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const relevantMonths = months.slice(0, actualData.length);
+  const months = data.map(d => d.date.toLocaleString('default', { month: 'short' }));
 
   const getMonthlyValues = (selector: (d: MonthlyFinancials) => number) => {
-    const actual = actualData.map(selector);
-    const forecast = isPlanning ? forecastData.map(selector) : undefined;
-    return { actual, forecast };
+    return data.map(selector);
   };
-  
+
   return (
     <Box bg="white" borderRadius="lg" boxShadow="sm">
       <TableContainer>
         <Table variant="simple" size="sm">
           <Thead>
             <Tr>
-              <Th rowSpan={2} verticalAlign="bottom" position="sticky" left="0" bg="white" zIndex="1">Metric</Th>
-              {relevantMonths.map(month => (
-                <Th key={month} isNumeric colSpan={isPlanning ? 2 : 1} textAlign="center">{month}</Th>
+              <Th>Metric</Th>
+              {months.map(month => (
+                <Th key={month} isNumeric>{month}</Th>
               ))}
-              <Th isNumeric colSpan={isPlanning ? 2 : 1} textAlign="center">YTD Total</Th>
+              <Th isNumeric>YTD Total</Th>
             </Tr>
-            {isPlanning && <Tr>
-                {relevantMonths.map(month => (
-                    <React.Fragment key={`${month}-sub`}>
-                        <Th isNumeric>Actual</Th>
-                        <Th isNumeric color="blue.500">Forecast</Th>
-                    </React.Fragment>
-                ))}
-                <Th isNumeric>Actual</Th>
-                <Th isNumeric color="blue.500">Forecast</Th>
-            </Tr>}
           </Thead>
           <Tbody>
             {/* Revenue */}
-            <FinancialRow label="Revenue" actualData={getMonthlyValues(d => d.revenue.total).actual} forecastData={getMonthlyValues(d => d.revenue.total).forecast} isBold />
-            <FinancialRow label="In-Store" actualData={getMonthlyValues(d => d.revenue.inStore).actual} forecastData={getMonthlyValues(d => d.revenue.inStore).forecast} isSubItem />
-            <FinancialRow label="Delivery" actualData={getMonthlyValues(d => d.revenue.delivery).actual} forecastData={getMonthlyValues(d => d.revenue.delivery).forecast} isSubItem />
-            <FinancialRow label="Catering" actualData={getMonthlyValues(d => d.revenue.catering).actual} forecastData={getMonthlyValues(d => d.revenue.catering).forecast} isSubItem />
+            <FinancialRow label="Revenue" data={getMonthlyValues(d => d.revenue.total)} isBold />
+            <FinancialRow label="In-Store" data={getMonthlyValues(d => d.revenue.inStore)} isSubItem />
+            <FinancialRow label="Delivery" data={getMonthlyValues(d => d.revenue.delivery)} isSubItem />
+            <FinancialRow label="Catering" data={getMonthlyValues(d => d.revenue.catering)} isSubItem />
 
             {/* COGS */}
-            <FinancialRow label="Cost of Goods Sold" actualData={getMonthlyValues(d => d.cogs.total).actual} forecastData={getMonthlyValues(d => d.cogs.total).forecast} isBold />
-            <FinancialRow label="Food" actualData={getMonthlyValues(d => d.cogs.food).actual} forecastData={getMonthlyValues(d => d.cogs.food).forecast} isSubItem />
-            <FinancialRow label="Beverages" actualData={getMonthlyValues(d => d.cogs.beverages).actual} forecastData={getMonthlyValues(d => d.cogs.beverages).forecast} isSubItem />
-            <FinancialRow label="Packaging" actualData={getMonthlyValues(d => d.cogs.packaging).actual} forecastData={getMonthlyValues(d => d.cogs.packaging).forecast} isSubItem />
-            
+            <FinancialRow label="Cost of Goods Sold" data={getMonthlyValues(d => d.cogs.total)} isBold />
+            <FinancialRow label="Food" data={getMonthlyValues(d => d.cogs.food)} isSubItem />
+            <FinancialRow label="Beverages" data={getMonthlyValues(d => d.cogs.beverages)} isSubItem />
+            <FinancialRow label="Packaging" data={getMonthlyValues(d => d.cogs.packaging)} isSubItem />
+
             {/* Gross Profit */}
-            <FinancialRow label="Gross Profit" actualData={getMonthlyValues(d => d.grossProfit).actual} forecastData={getMonthlyValues(d => d.grossProfit).forecast} isBold />
+            <FinancialRow label="Gross Profit" data={getMonthlyValues(d => d.grossProfit)} isBold />
 
             {/* Operating Expenses */}
-            <FinancialRow label="Operating Expenses" actualData={getMonthlyValues(d => d.expenses.total).actual} forecastData={getMonthlyValues(d => d.expenses.total).forecast} isBold />
-            <FinancialRow label="Labor" actualData={getMonthlyValues(d => d.expenses.labor.total).actual} forecastData={getMonthlyValues(d => d.expenses.labor.total).forecast} isSubItem />
-            <FinancialRow label="Wages" actualData={getMonthlyValues(d => d.expenses.labor.wages).actual} forecastData={getMonthlyValues(d => d.expenses.labor.wages).forecast} isSubSubItem />
-            <FinancialRow label="Management Salaries" actualData={getMonthlyValues(d => d.expenses.labor.salaries).actual} forecastData={getMonthlyValues(d => d.expenses.labor.salaries).forecast} isSubSubItem />
-            <FinancialRow label="Rent & Utilities" actualData={getMonthlyValues(d => d.expenses.rentAndUtilities.total).actual} forecastData={getMonthlyValues(d => d.expenses.rentAndUtilities.total).forecast} isSubItem />
-            <FinancialRow label="Rent" actualData={getMonthlyValues(d => d.expenses.rentAndUtilities.rent).actual} forecastData={getMonthlyValues(d => d.expenses.rentAndUtilities.rent).forecast} isSubSubItem />
-            <FinancialRow label="Utilities" actualData={getMonthlyValues(d => d.expenses.rentAndUtilities.utilities).actual} forecastData={getMonthlyValues(d => d.expenses.rentAndUtilities.utilities).forecast} isSubSubItem />
-            <FinancialRow label="Marketing" actualData={getMonthlyValues(d => d.expenses.marketing).actual} forecastData={getMonthlyValues(d => d.expenses.marketing).forecast} isSubItem />
-            <FinancialRow label="General & Admin" actualData={getMonthlyValues(d => d.expenses.gAndA.total).actual} forecastData={getMonthlyValues(d => d.expenses.gAndA.total).forecast} isSubItem />
-            <FinancialRow label="POS Fees" actualData={getMonthlyValues(d => d.expenses.gAndA.posFees).actual} forecastData={getMonthlyValues(d => d.expenses.gAndA.posFees).forecast} isSubSubItem />
-            <FinancialRow label="Delivery Commissions" actualData={getMonthlyValues(d => d.expenses.gAndA.deliveryCommissions).actual} forecastData={getMonthlyValues(d => d.expenses.gAndA.deliveryCommissions).forecast} isSubSubItem />
-            <FinancialRow label="Insurance" actualData={getMonthlyValues(d => d.expenses.gAndA.insurance).actual} forecastData={getMonthlyValues(d => d.expenses.gAndA.insurance).forecast} isSubSubItem />
-            <FinancialRow label="Repairs & Maintenance" actualData={getMonthlyValues(d => d.expenses.gAndA.repairs).actual} forecastData={getMonthlyValues(d => d.expenses.gAndA.repairs).forecast} isSubSubItem />
-
+            <FinancialRow label="Operating Expenses" data={getMonthlyValues(d => d.expenses.total)} isBold />
+            <FinancialRow label="Labor" data={getMonthlyValues(d => d.expenses.labor.total)} isSubItem />
+            <FinancialRow label="Wages" data={getMonthlyValues(d => d.expenses.labor.wages)} isSubSubItem />
+            <FinancialRow label="Management Salaries" data={getMonthlyValues(d => d.expenses.labor.salaries)} isSubSubItem />
+            <FinancialRow label="Rent & Utilities" data={getMonthlyValues(d => d.expenses.rentAndUtilities.total)} isSubItem />
+            <FinancialRow label="Rent" data={getMonthlyValues(d => d.expenses.rentAndUtilities.rent)} isSubSubItem />
+            <FinancialRow label="Utilities" data={getMonthlyValues(d => d.expenses.rentAndUtilities.utilities)} isSubSubItem />
+            <FinancialRow label="Marketing" data={getMonthlyValues(d => d.expenses.marketing)} isSubItem />
+            <FinancialRow label="General & Admin" data={getMonthlyValues(d => d.expenses.gAndA.total)} isSubItem />
+            <FinancialRow label="POS Fees" data={getMonthlyValues(d => d.expenses.gAndA.posFees)} isSubSubItem />
+            <FinancialRow label="Delivery Commissions" data={getMonthlyValues(d => d.expenses.gAndA.deliveryCommissions)} isSubSubItem />
+            <FinancialRow label="Insurance" data={getMonthlyValues(d => d.expenses.gAndA.insurance)} isSubSubItem />
+            <FinancialRow label="Repairs & Maintenance" data={getMonthlyValues(d => d.expenses.gAndA.repairs)} isSubSubItem />
+            
             {/* Operating Income */}
-            <FinancialRow label="Operating Income" actualData={getMonthlyValues(d => d.operatingIncome).actual} forecastData={getMonthlyValues(d => d.operatingIncome).forecast} isBold />
+            <FinancialRow label="Operating Income" data={getMonthlyValues(d => d.operatingIncome)} isBold />
 
             {/* Net Income */}
-            <FinancialRow label="Net Income" actualData={getMonthlyValues(d => d.netIncome).actual} forecastData={getMonthlyValues(d => d.netIncome).forecast} isBold />
+            <FinancialRow label="Net Income" data={getMonthlyValues(d => d.netIncome)} isBold />
           </Tbody>
         </Table>
       </TableContainer>

@@ -1,7 +1,7 @@
 // src/hooks/useForecasting.ts
 import { useState } from 'react';
-import { v4 as uuidv4 } from 'uuid/dist/v4.js';
-import { MonthlyFinancials } from '../data/financial-data';
+import { v4 as uuidv4 } from 'uuid';
+import { MonthlyFinancials } from '../MonthlyFinancials';
 
 // --- A new, richer interface for our assumptions ---
 export interface InteractiveModification {
@@ -56,7 +56,7 @@ const analyzeTextForModifications = (text: string, baseData: MonthlyFinancials[]
       }
     });
   }
-  
+
   // --- Rule for hiring ---
   const hireRegex = /(?:hire|add|bring on)\s+(\d+|a|an|one|two|three|four|five)\s+(?:more\s*)?(?:new\s*)?(?:worker|employee|cook|person|staff)/i;
   const hireMatch = lowerText.match(hireRegex);
@@ -64,10 +64,10 @@ const analyzeTextForModifications = (text: string, baseData: MonthlyFinancials[]
     const numberWords: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5 };
     const quantityStr = hireMatch[1].toLowerCase();
     const quantity = numberWords[quantityStr] || parseInt(quantityStr, 10);
-    
+
     if (!isNaN(quantity)) {
         const lastMonth = baseData[baseData.length - 1];
-        const estimatedEmployees = Math.round(lastMonth.revenue.total / 15000);
+        const estimatedEmployees = Math.round(lastMonth.revenue.total / 15000); 
         const averageWage = estimatedEmployees > 0 ? lastMonth.expenses.labor.wages / estimatedEmployees : 5000;
         const wageIncrease = quantity * averageWage;
 
@@ -102,7 +102,7 @@ const runForecastEngine = (baseData: MonthlyFinancials[], modifications: Interac
     for (const mod of modifications) {
       newMonth = mod.apply(newMonth, mod.parameter.value);
     }
-    
+
     // Recalculate totals
     newMonth.cogs.total = newMonth.cogs.food + newMonth.cogs.beverages + newMonth.cogs.packaging;
     newMonth.grossProfit = newMonth.revenue.total - newMonth.cogs.total;
@@ -135,7 +135,7 @@ export const useForecastingAI = (baseData: MonthlyFinancials[]) => {
     }, 1500);
   };
 
-  const applyForecast = (approvedModifications: InteractiveModification[]) => {
+  const applyForecast = (approvedModifications: InteractiveModification[]) => { 
     if (approvedModifications.length > 0) {
         const newForecastData = runForecastEngine(baseData, approvedModifications);
         setForecastData(newForecastData);
@@ -149,12 +149,23 @@ export const useForecastingAI = (baseData: MonthlyFinancials[]) => {
     setForecastData(null);
   };
 
+  const updateModification = (id: string, newValue: number) => {
+    setGeneratedModifications(currentMods => 
+      currentMods.map(mod => 
+        mod.id === id 
+          ? { ...mod, parameter: { ...mod.parameter, value: newValue } }
+          : mod
+      )
+    );
+  };
+
   return {
     isModalOpen,
     closeModal: () => setIsModalOpen(false),
     isLoading,
     startAnalysis,
     generatedModifications,
+    updateModification,
     applyForecast,
     forecastData,
     clearForecast,

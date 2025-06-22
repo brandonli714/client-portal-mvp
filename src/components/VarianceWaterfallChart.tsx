@@ -1,50 +1,48 @@
 // src/components/VarianceWaterfallChart.tsx
 import React from 'react';
-import { Card, Title, Subtitle, BarChart as TremorBarChart } from "@tremor/react"; // Use Tremor for this chart
-import { MonthlyFinancials } from '../data/financial-data';
+import { Card, Title, Subtitle, BarChart as TremorBarChart } from "@tremor/react";
+import { MonthlyFinancials } from '../MonthlyFinancials';
 
 interface VarianceWaterfallChartProps {
   actualData: MonthlyFinancials[];
   forecastData: MonthlyFinancials[];
 }
 
-const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-};
+const formatCurrencyForChart = (value: number) => {
+  return `$${new Intl.NumberFormat('en-US').format(value)}`;
+}
 
 export const VarianceWaterfallChart: React.FC<VarianceWaterfallChartProps> = ({ actualData, forecastData }) => {
-    const actualTotal = actualData.reduce((sum, month) => sum + month.netIncome, 0);
-    const forecastTotal = forecastData.reduce((sum, month) => sum + month.netIncome, 0);
+  const actualTotal = actualData.reduce((sum, month) => sum + month.netIncome, 0);
+  const forecastTotal = forecastData.reduce((sum, month) => sum + month.netIncome, 0);
 
-    const varianceData = [
-        {
-            name: "Actual Net Income",
-            value: actualTotal,
-        },
-        {
-            name: "Forecast Net Income",
-            value: forecastTotal,
-        }
-    ]
+  const difference = forecastTotal - actualTotal;
 
-    return (
-        <Card>
-            <Title>Net Income: Actual vs. Forecast</Title>
-            <Subtitle>Visualizing the change in year-to-date net income based on the forecast scenario.</Subtitle>
-            <TremorBarChart
-                className="mt-6"
-                data={varianceData}
-                index="name"
-                categories={["value"]}
-                colors={["blue"]}
-                valueFormatter={formatCurrency}
-                yAxisWidth={60}
-            />
-        </Card>
-    );
+  const chartData = [
+    {
+      name: 'Actual TTM',
+      value: actualTotal
+    },
+    {
+      name: 'Forecast 12-Mo',
+      value: forecastTotal
+    }
+  ];
+
+  return (
+    <Card>
+      <Title>Net Income: Actual vs. Forecast</Title>
+      <Subtitle>Trailing 12 Months vs. Next 12 Months</Subtitle>
+      <TremorBarChart
+        className="mt-6"
+        data={chartData}
+        index="name"
+        categories={["value"]}
+        colors={["blue"]}
+        valueFormatter={formatCurrencyForChart}
+        yAxisWidth={48}
+        showLegend={false}
+      />
+    </Card>
+  );
 };

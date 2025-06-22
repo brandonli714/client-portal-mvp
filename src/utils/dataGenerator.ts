@@ -1,48 +1,6 @@
-// src/data/financial-data.ts
+import { MonthlyFinancials } from '../MonthlyFinancials';
 
-// A detailed interface for one month of financial data
-export interface MonthlyFinancials {
-  date: Date;
-  revenue: {
-    inStore: number;
-    delivery: number;
-    catering: number;
-    total: number;
-  };
-  cogs: {
-    food: number;
-    beverages: number;
-    packaging: number;
-    total: number;
-  };
-  grossProfit: number;
-  expenses: {
-    labor: {
-      wages: number;
-      salaries: number;
-      total: number;
-    };
-    marketing: number;
-    rentAndUtilities: {
-      rent: number;
-      utilities: number;
-      total: number;
-    };
-    gAndA: { // General & Administrative
-      posFees: number;
-      deliveryCommissions: number;
-      insurance: number;
-      repairs: number;
-      total: number;
-    };
-    total: number;
-  };
-  operatingIncome: number;
-  netIncome: number;
-}
-
-// Generates the full dataset from Jan 2020 to May 2025
-export const generateFinancialData = (): MonthlyFinancials[] => {
+export function generateFinancialData(): MonthlyFinancials[] {
   const data: MonthlyFinancials[] = [];
   const startDate = new Date('2020-01-01T00:00:00Z');
   const endDate = new Date('2025-05-01T00:00:00Z');
@@ -129,4 +87,4 @@ export const generateFinancialData = (): MonthlyFinancials[] => {
   }
 
   return data;
-};
+}
