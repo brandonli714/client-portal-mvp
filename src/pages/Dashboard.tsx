@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   Flex, Heading, Select, VStack,
-  Tabs, TabList, Tab, TabPanels, TabPanel,
+  Tabs, TabList, Tab, TabPanels, TabPanel, Box,
 } from '@chakra-ui/react';
 import { generateFinancialData } from '../utils/dataGenerator';
 import { FinancialStatementTable } from '../components/FinancialStatementTable';
@@ -21,48 +21,56 @@ function transformToChartable(data: MonthlyFinancials[]): ChartableData[] {
     revenue: d.revenue.total,
     grossProfit: d.grossProfit,
     netIncome: d.netIncome,
-    type: 'actual', // Type is always 'actual' for this chart
+    type: 'actual', // Only actual data on the dashboard chart
     month: d.date.toLocaleString('default', { month: 'short' }) + ` '${d.date.getFullYear().toString().slice(2)}`
   }));
 }
 
 export const DashboardPage = () => {
   const [selectedYear, setSelectedYear] = useState(availableYears[0]);
-  
+
   const actualDataForYear = useMemo(() => {
     return allData.filter(d => d.date.getFullYear() === selectedYear);
   }, [selectedYear]);
 
-  const actualTotals = useMemo(() => {
+  const displayData = useMemo(() => {
+    return transformToChartable(actualDataForYear);
+  }, [actualDataForYear]);
+
+  const totals = useMemo(() => {
     const dataToUse = actualDataForYear;
+    if (!dataToUse) return { revenue: 0, grossProfit: 0, netIncome: 0, ytdRevenue: 0, ytdNetIncome: 0 };
+
     const currentMonthIndex = new Date().getMonth();
     const isCurrentYear = selectedYear === new Date().getFullYear();
 
-    return dataToUse.reduce((acc, data) => {
-      const month = data.date.getMonth();
-      acc.revenue += data.revenue.total;
-      acc.grossProfit += data.grossProfit;
-      acc.netIncome += data.netIncome;
-      if (isCurrentYear && month <= currentMonthIndex) {
-          acc.ytdRevenue += data.revenue.total;
-          acc.ytdNetIncome += data.netIncome;
-      }
-      return acc;
-    }, { revenue: 0, grossProfit: 0, netIncome: 0, ytdRevenue: 0, ytdNetIncome: 0 });
+    const annualTotals = dataToUse.reduce((acc: { revenue: number, grossProfit: number, netIncome: number }, data) => {
+        acc.revenue += data.revenue.total;
+        acc.grossProfit += data.grossProfit;
+        acc.netIncome += data.netIncome;
+        return acc;
+    }, { revenue: 0, grossProfit: 0, netIncome: 0 });
+
+    const ytdTotals = actualDataForYear.reduce((acc, data) => {
+        const month = data.date.getMonth();
+        if (isCurrentYear && month <= currentMonthIndex) {
+            acc.ytdRevenue += data.revenue.total;
+            acc.ytdNetIncome += data.netIncome;
+        }
+        return acc;
+    }, { ytdRevenue: 0, ytdNetIncome: 0 });
+
+    return { ...annualTotals, ...ytdTotals };
   }, [actualDataForYear, selectedYear]);
-  
-  const actualDisplayData = useMemo(() => {
-    return transformToChartable(actualDataForYear.slice(-12));
-  }, [actualDataForYear]);
 
   return (
     <VStack spacing={6} align="stretch">
       <Flex justifyContent="space-between" alignItems="center">
         <Heading as="h2" size="xl" color="gray.700">Brandon's Tacos</Heading>
-        <Select 
-          w="200px" 
-          value={selectedYear} 
-          onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))} 
+        <Select
+          w="200px"
+          value={selectedYear}
+          onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
           bg="white"
         >
           {availableYears.map(year => <option key={year} value={year}>{year} Financials</option>)}
@@ -76,20 +84,22 @@ export const DashboardPage = () => {
         </TabList>
         <TabPanels>
           <TabPanel p={0} pt={6}>
-            <VStack spacing={6} align="stretch">
-              <SummaryCards 
-                totalRevenue={actualTotals.revenue} 
-                totalGrossProfit={actualTotals.grossProfit} 
-                netIncome={actualTotals.netIncome}
-                ytdRevenue={actualTotals.ytdRevenue}
-                ytdNetIncome={actualTotals.ytdNetIncome}
+            <VStack spacing={6}>
+              <SummaryCards
+                totalRevenue={totals.revenue}
+                totalGrossProfit={totals.grossProfit}
+                netIncome={totals.netIncome}
+                ytdRevenue={totals.ytdRevenue}
+                ytdNetIncome={totals.ytdNetIncome}
                 isForecast={false}
               />
-              <MonthlyChart data={actualDisplayData} isForecast={false} />
+              <MonthlyChart data={displayData} isForecast={false}/>
             </VStack>
           </TabPanel>
           <TabPanel p={0} pt={6}>
-            <FinancialStatementTable data={actualDataForYear} />
+            <Box overflowX="auto">
+              <FinancialStatementTable data={actualDataForYear} />
+            </Box>
           </TabPanel>
         </TabPanels>
       </Tabs>
