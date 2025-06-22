@@ -1,247 +1,157 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalFooter, ModalBody, ModalCloseButton,
-  Button, Box, VStack, Text, Textarea, Spinner,
-  Tabs, TabList, Tab, TabPanels, TabPanel, Heading,
-  NumberInput, NumberInputField, NumberInputStepper, NumberIncrementStepper, NumberDecrementStepper,
-  SimpleGrid, FormControl, FormLabel, Slider, SliderTrack, SliderFilledTrack, SliderThumb,
+  Button, VStack, Box, Text, HStack, Slider, SliderTrack, SliderFilledTrack, SliderThumb,
+  CircularProgress, Input, Divider
 } from '@chakra-ui/react';
-import { ChatMessage, ScenarioModification, ForecastAssumptions } from '../hooks/useForecasting';
+import { InteractiveModification, Message } from '../hooks/useForecasting';
 
-// --- Helper component for a single assumption slider ---
-interface AssumptionSliderProps {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  displayTransform?: (value: number) => string;
-  min: number;
-  max: number;
-  step: number;
-}
-
-const AssumptionControl: React.FC<AssumptionSliderProps> = ({
-  label,
-  value,
-  onChange,
-  displayTransform = (v) => v.toFixed(2),
-  min,
-  max,
-  step,
-}) => (
-  <FormControl>
-    <FormLabel fontSize="sm" mb={1}>{label}</FormLabel>
-    <SimpleGrid columns={2} spacing={2} alignItems="center">
-      <Slider
-        aria-label={label}
-        value={value}
-        onChange={onChange}
-        min={min}
-        max={max}
-        step={step}
-      >
-        <SliderTrack>
-          <SliderFilledTrack />
-        </SliderTrack>
-        <SliderThumb />
-      </Slider>
-      <NumberInput
-        size="sm"
-        value={displayTransform(value)}
-        onChange={(_, valNum) => onChange(isNaN(valNum) ? 0 : valNum)}
-        min={min}
-        max={max}
-        step={step}
-      >
-        <NumberInputField readOnly />
-      </NumberInput>
-    </SimpleGrid>
-  </FormControl>
-);
-
-
-// --- Main Modal Component ---
-export interface AssumptionsModalProps {
+// Props for the main modal component
+interface AssumptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
   isLoading: boolean;
-  messages: ChatMessage[];
-  activeModifications: ScenarioModification[];
-  assumptions: ForecastAssumptions | null;
+  messages: Message[];
+  activeModifications: InteractiveModification[];
   onSendMessage: (text: string) => void;
-  onUpdateAssumption: <C extends keyof ForecastAssumptions, K extends keyof ForecastAssumptions[C]>(
-    category: C,
-    key: K,
-    value: ForecastAssumptions[C][K]
-  ) => void;
-  onApply: () => void;
   onUpdateModification: (id: string, value: number) => void;
+  onApply: () => void;
 }
 
+// A new, single helper component to display either a slider or fixed summary
+const AssumptionControl: React.FC<{ mod: InteractiveModification, onUpdate: (id: string, value: number) => void }> = ({ mod, onUpdate }) => {
+  // Renders a Percentage Slider
+  if (mod.type === 'percentage' && typeof mod.parameter === 'object') {
+    const param = mod.parameter;
+    const displayTransform = (v: number) => `${v.toFixed(0)}%`;
+
+    return (
+      <Box w="100%">
+        <HStack justify="space-between">
+            <Text fontWeight="bold">{mod.description}</Text>
+            <Text fontWeight="bold" color="blue.600">{displayTransform(param.value)}</Text>
+        </HStack>
+        <Text fontSize="sm" color="gray.600" mb={3}>{mod.explanation}</Text>
+        <Slider
+          value={param.value}
+          onChange={(value) => onUpdate(mod.id, value)}
+          min={param.min}
+          max={param.max}
+          step={param.step}
+        >
+          <SliderTrack><SliderFilledTrack /></SliderTrack>
+          <SliderThumb />
+        </Slider>
+      </Box>
+    );
+  }
+
+  // Renders a Fixed Cost Summary
+  if (mod.type === 'fixed') {
+    return (
+      <Box w="100%">
+        <Text fontWeight="bold">{mod.description}</Text>
+        <Text fontSize="sm" color="gray.600">{mod.explanation}</Text>
+      </Box>
+    );
+  }
+
+  return null; // Fallback
+};
+
+// Main Modal Component
 export const AssumptionsModal: React.FC<AssumptionsModalProps> = ({
-  isOpen,
-  onClose,
-  isLoading,
-  messages,
-  activeModifications,
-  assumptions,
-  onSendMessage,
-  onUpdateAssumption,
-  onApply,
-  onUpdateModification,
+  isOpen, onClose, isLoading, messages, activeModifications,
+  onSendMessage, onUpdateModification, onApply
 }) => {
-  const [inputText, setInputText] = useState('');
+  const [text, setText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(scrollToBottom, [messages]);
+
   const handleSend = () => {
-    if (inputText.trim()) {
-      onSendMessage(inputText);
-      setInputText('');
+    if (text.trim()) {
+      onSendMessage(text);
+      setText('');
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !isLoading) {
       handleSend();
     }
   };
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const renderActiveModifications = () => (
-    <VStack spacing={4} align="stretch" mt={4}>
-      <Heading size="xs">Active Scenario:</Heading>
-      {activeModifications.map(mod => (
-        <Box key={mod.id} p={3} borderWidth="1px" borderRadius="md">
-            <AssumptionControl
-                label={mod.descriptionTemplate(mod.parameter.value)}
-                value={mod.parameter.value}
-                onChange={(v) => onUpdateModification(mod.id, v)}
-                min={mod.parameter.min}
-                max={mod.parameter.max}
-                step={mod.parameter.step}
-                displayTransform={(v) => mod.parameter.unit === '$' ? `$${v.toLocaleString()}` : `${v.toFixed(2)}%`}
-            />
-            <Text fontSize="xs" color="gray.500" mt={1}>{mod.explanation}</Text>
-        </Box>
-      ))}
-    </VStack>
-  );
-
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside">
       <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>AI-Powered Forecasting</ModalHeader>
+      <ModalContent mx={4}>
+        <ModalHeader>AI-Assisted Forecast</ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={6}>
-          <Tabs>
-            <TabList>
-              <Tab>Conversational AI</Tab>
-              <Tab>Core Model Assumptions</Tab>
-            </TabList>
-            <TabPanels>
-              <TabPanel>
-                <VStack spacing={4} align="stretch">
-                  <Box
-                    h="300px"
-                    overflowY="auto"
-                    borderWidth="1px"
-                    borderRadius="md"
-                    p={3}
-                  >
-                    <VStack spacing={4} align="stretch">
-                      {messages.map((msg) => (
-                        <Box
-                          key={msg.id}
-                          alignSelf={msg.sender === 'user' ? 'flex-end' : 'flex-start'}
-                          bg={msg.sender === 'user' ? 'blue.100' : 'gray.100'}
-                          borderRadius="lg"
-                          px={3}
-                          py={2}
-                          maxWidth="80%"
-                        >
-                          <Text>{msg.text}</Text>
+          <VStack spacing={4} align="stretch">
+            {/* Message History */}
+            <Box h="300px" overflowY="auto" p={4} borderWidth={1} borderRadius="md" bg="gray.50">
+              <VStack spacing={4} align="stretch">
+                {messages.map((msg) => (
+                  <HStack key={msg.id} justify={msg.sender === 'user' ? 'flex-end' : 'flex-start'}>
+                    <Box
+                      bg={msg.sender === 'user' ? 'blue.500' : 'gray.200'}
+                      color={msg.sender === 'user' ? 'white' : 'black'}
+                      px={4} py={2} borderRadius="lg" maxWidth="80%"
+                    >
+                      <Text>{msg.text}</Text>
+                    </Box>
+                  </HStack>
+                ))}
+                 {isLoading && (
+                    <HStack justify='flex-start'>
+                        <Box bg='gray.200' color='black' px={4} py={2} borderRadius="lg">
+                            <CircularProgress isIndeterminate size="20px" />
                         </Box>
-                      ))}
-                      {isLoading && (
-                        <Box alignSelf="flex-start">
-                          <Spinner size="sm" />
-                        </Box>
-                      )}
-                      <div ref={messagesEndRef} />
-                    </VStack>
-                  </Box>
-
-                  {activeModifications.length > 0 && renderActiveModifications()}
-
-                  <Textarea
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="e.g., Hire a new cook in July"
-                    isDisabled={isLoading || activeModifications.length > 0}
-                  />
-                  <Button
-                    onClick={handleSend}
-                    isLoading={isLoading}
-                    colorScheme="blue"
-                    isDisabled={activeModifications.length > 0}
-                  >
-                    Send
-                  </Button>
-                </VStack>
-              </TabPanel>
-              <TabPanel>
-                {assumptions ? (
-                  <VStack spacing={6} align="stretch">
-                    <Box>
-                      <Heading size="sm" mb={3}>Monthly Revenue Growth ($)</Heading>
-                      <SimpleGrid columns={2} spacing={4}>
-                         <AssumptionControl label="In-Store" value={assumptions.revenueGrowth.inStoreSlope} onChange={v => onUpdateAssumption('revenueGrowth', 'inStoreSlope', v)} min={-1000} max={10000} step={100} displayTransform={v => `$${v.toFixed(0)}`} />
-                         <AssumptionControl label="Delivery" value={assumptions.revenueGrowth.deliverySlope} onChange={v => onUpdateAssumption('revenueGrowth', 'deliverySlope', v)} min={-1000} max={10000} step={100} displayTransform={v => `$${v.toFixed(0)}`} />
-                         <AssumptionControl label="Catering" value={assumptions.revenueGrowth.cateringSlope} onChange={v => onUpdateAssumption('revenueGrowth', 'cateringSlope', v)} min={-1000} max={10000} step={100} displayTransform={v => `$${v.toFixed(0)}`} />
-                      </SimpleGrid>
-                    </Box>
-                    <Box>
-                      <Heading size="sm" mb={3}>Cost of Goods Sold (as % of Revenue)</Heading>
-                      <SimpleGrid columns={2} spacing={4}>
-                         <AssumptionControl label="Food Cost" value={assumptions.costRatios.cogsFood * 100} onChange={v => onUpdateAssumption('costRatios', 'cogsFood', v/100)} min={0} max={100} step={0.5} displayTransform={v => `${v.toFixed(1)}%`} />
-                         <AssumptionControl label="Beverage Cost" value={assumptions.costRatios.cogsBeverages * 100} onChange={v => onUpdateAssumption('costRatios', 'cogsBeverages', v/100)} min={0} max={100} step={0.5} displayTransform={v => `${v.toFixed(1)}%`} />
-                      </SimpleGrid>
-                    </Box>
-                    <Box>
-                        <Heading size="sm" mb={3}>Variable Operating Expenses (as % of Revenue)</Heading>
-                        <SimpleGrid columns={2} spacing={4}>
-                            <AssumptionControl label="Wages" value={assumptions.costRatios.laborWages * 100} onChange={v => onUpdateAssumption('costRatios', 'laborWages', v/100)} min={0} max={100} step={0.5} displayTransform={v => `${v.toFixed(1)}%`} />
-                            <AssumptionControl label="Marketing" value={assumptions.costRatios.marketing * 100} onChange={v => onUpdateAssumption('costRatios', 'marketing', v/100)} min={0} max={100} step={0.5} displayTransform={v => `${v.toFixed(1)}%`} />
-                            <AssumptionControl label="Delivery Commissions" value={assumptions.costRatios.gaDeliveryCommissions * 100} onChange={v => onUpdateAssumption('costRatios', 'gaDeliveryCommissions', v/100)} min={0} max={100} step={0.5} displayTransform={v => `${v.toFixed(1)}%`} />
-                        </SimpleGrid>
-                    </Box>
-                    <Box>
-                        <Heading size="sm" mb={3}>Fixed Monthly Operating Expenses ($)</Heading>
-                        <SimpleGrid columns={2} spacing={4}>
-                            <AssumptionControl label="Salaries" value={assumptions.fixedCosts.salaries} onChange={v => onUpdateAssumption('fixedCosts', 'salaries', v)} min={0} max={100000} step={500} displayTransform={v => `$${v.toFixed(0)}`} />
-                            <AssumptionControl label="Rent" value={assumptions.fixedCosts.rent} onChange={v => onUpdateAssumption('fixedCosts', 'rent', v)} min={0} max={50000} step={250} displayTransform={v => `$${v.toFixed(0)}`} />
-                            <AssumptionControl label="Utilities" value={assumptions.fixedCosts.utilities} onChange={v => onUpdateAssumption('fixedCosts', 'utilities', v)} min={0} max={10000} step={100} displayTransform={v => `$${v.toFixed(0)}`} />
-                            <AssumptionControl label="Insurance" value={assumptions.fixedCosts.gaInsurance} onChange={v => onUpdateAssumption('fixedCosts', 'gaInsurance', v)} min={0} max={10000} step={50} displayTransform={v => `$${v.toFixed(0)}`} />
-                        </SimpleGrid>
-                    </Box>
-                  </VStack>
-                ) : (
-                  <Text>No assumption data available. Please run a forecast first.</Text>
+                    </HStack>
                 )}
-              </TabPanel>
-            </TabPanels>
-          </Tabs>
+                <div ref={messagesEndRef} />
+              </VStack>
+            </Box>
+
+            {/* Active Scenario Modifications */}
+            {activeModifications.length > 0 && (
+              <Box p={4} borderWidth={1} borderRadius="md" bg="blue.50">
+                <Text fontWeight="bold" mb={3} fontSize="lg">Active Scenario</Text>
+                <VStack spacing={4} divider={<Divider />}>
+                  {activeModifications.map((mod) => (
+                    <AssumptionControl key={mod.id} mod={mod} onUpdate={onUpdateModification} />
+                  ))}
+                </VStack>
+              </Box>
+            )}
+
+            {/* Chat Input */}
+            <HStack>
+              <Input
+                placeholder="Type your message..."
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyPress={handleKeyPress}
+                isDisabled={isLoading}
+              />
+              <Button onClick={handleSend} colorScheme="blue" isDisabled={isLoading}>Send</Button>
+            </HStack>
+          </VStack>
         </ModalBody>
+
         <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button colorScheme="blue" onClick={onApply} isDisabled={isLoading}>
+          <Button variant="ghost" mr={3} onClick={onClose}>Cancel</Button>
+          <Button
+            colorScheme="blue"
+            onClick={onApply}
+            isDisabled={isLoading || activeModifications.length === 0}
+          >
             Apply Forecast
           </Button>
         </ModalFooter>

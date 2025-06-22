@@ -1,23 +1,22 @@
 // src/pages/Forecasting.tsx
 import React, { useMemo } from 'react';
-import { VStack, Button, Box, Heading } from '@chakra-ui/react';
-import { generateFinancialData } from '../utils/dataGenerator';
-import { SummaryCards } from '../components/SummaryCards';
-import { MonthlyChart } from '../components/MonthlyChart';
+import { VStack, Heading, Button, HStack } from '@chakra-ui/react';
 import { useForecastingAI } from '../hooks/useForecasting';
-import { VarianceWaterfallChart } from '../components/VarianceWaterfallChart';
 import { AssumptionsModal } from '../components/AssumptionsModal';
-import { ChartableData, DataType } from '../types';
 import { MonthlyFinancials } from '../MonthlyFinancials';
+import { generateFinancialData } from '../utils/dataGenerator';
+import { MonthlyChart } from '../components/MonthlyChart';
+import { SummaryCards } from '../components/SummaryCards';
+import { ChartableData, DataType } from '../types';
 
-// Generate the data once
+// Generate data once
 const allData = generateFinancialData();
 
-// THIS FUNCTION IS NOW CORRECTED TO MATCH THE CHARTABLEDATA TYPE
+// Helper to convert data for charting
 const convertToChartable = (data: MonthlyFinancials[], type: DataType): ChartableData[] => {
   return data.map(d => ({
     date: d.date,
-    month: d.date.toLocaleString('default', { month: 'short' }),
+    month: d.date.toLocaleString('default', { month: 'short', year: '2-digit' }),
     revenue: d.revenue.total,
     cogs: d.cogs.total,
     opex: d.expenses.total,
@@ -28,78 +27,64 @@ const convertToChartable = (data: MonthlyFinancials[], type: DataType): Chartabl
 };
 
 export const ForecastingPage = () => {
-  const actuals = useMemo(() => allData.slice(0, 12), []);
-  
-  // HOOK IS NOW CORRECTLY DESTRUCTURED
+  // Use the last 12 months of actual data as the base
+  const actuals = useMemo(() => allData.slice(-12), []);
+
   const {
     isModalOpen,
-    openModal: startConversation, // <-- RENAMED HERE
+    openModal,
     closeModal,
     isLoading,
     messages,
     activeModifications,
-    assumptions,
+    onSendMessage,
+    onUpdateModification,
+    onApply,
     forecastData,
-    sendMessage,
-    updateAssumption,
-    updateModification,
-    runAndApplyForecast,
     clearForecast,
   } = useForecastingAI(actuals);
 
-  // DATA IS NOW CONVERTED TO THE CORRECT TYPE FOR CHARTS
-  const chartableActuals = useMemo(() => convertToChartable(actuals, 'actual'), [actuals]);
-  const chartableForecast = useMemo(() => forecastData ? convertToChartable(forecastData, 'forecast') : null, [forecastData]);
-
-  // The combined data for the main chart
-  const combinedChartData = chartableForecast ? [...chartableActuals, ...chartableForecast] : chartableActuals;
+  // Chart data combines actuals and forecast if it exists
+  const chartData = useMemo(() => {
+    const actualChartable = convertToChartable(actuals, 'actual');
+    if (forecastData) {
+      const forecastChartable = convertToChartable(forecastData, 'forecast');
+      return [...actualChartable, ...forecastChartable];
+    }
+    return actualChartable;
+  }, [actuals, forecastData]);
 
   // Calculate totals for SummaryCards
   const summarySource = forecastData || actuals;
-  const totalRevenue = summarySource.reduce((sum, d) => sum + d.revenue.total, 0);
-  const totalCogs = summarySource.reduce((sum, d) => sum + d.cogs.total, 0);
-  const totalNetIncome = summarySource.reduce((sum, d) => sum + d.netIncome, 0);
+  const totalRevenue = summarySource.reduce((sum: number, d: MonthlyFinancials) => sum + d.revenue.total, 0);
+  const totalCogs = summarySource.reduce((sum: number, d: MonthlyFinancials) => sum + d.cogs.total, 0);
+  const totalNetIncome = summarySource.reduce((sum: number, d: MonthlyFinancials) => sum + d.netIncome, 0);
 
   return (
     <VStack spacing={6} align="stretch" p={8}>
-      <Box>
-        <Heading size="lg" mb={4}>AI Scenario Planner</Heading>
-        {/* MODAL IS NOW OPENED WITH THE CORRECT FUNCTION */}
-        <Button onClick={startConversation} colorScheme="blue">
-          Create New Forecast
+      <HStack justifyContent="space-between">
+        <Heading as="h1">Conversational Forecasting</Heading>
+        <Button onClick={openModal} colorScheme="blue">
+          Describe a Scenario
         </Button>
-        {forecastData && (
-          <Button onClick={clearForecast} colorScheme="gray" ml={4}>
-            Clear Forecast
-          </Button>
-        )}
-      </Box>
-      
-      {/* SUMMARY CARDS NOW RECEIVES THE CORRECT PROPS */}
+      </HStack>
+
       <SummaryCards
         totalRevenue={totalRevenue}
         totalGrossProfit={totalRevenue - totalCogs}
         netIncome={totalNetIncome}
         isForecast={!!forecastData}
-        ytdRevenue={0} // YTD data not applicable in forecast view
-        ytdNetIncome={0} // YTD data not applicable in forecast view
+        ytdRevenue={0}
+        ytdNetIncome={0}
       />
 
-      {/* MONTHLY CHART NOW RECEIVES THE CORRECT PROPS */}
-      <MonthlyChart
-        data={combinedChartData}
-        isForecast={!!forecastData}
-      />
+      <MonthlyChart data={chartData} isForecast={!!forecastData} />
 
-      {/* WATERFALL CHART NOW RECEIVES THE CORRECT PROPS */}
       {forecastData && (
-        <VarianceWaterfallChart
-          actualData={actuals}
-          forecastData={forecastData}
-        />
+        <Button onClick={clearForecast} colorScheme="gray" alignSelf="flex-start">
+            Clear Forecast
+        </Button>
       )}
-
-      {/* SCENARIO PLANNER REMOVED AS IT IS OBSOLETE */}
 
       <AssumptionsModal
         isOpen={isModalOpen}
@@ -107,11 +92,9 @@ export const ForecastingPage = () => {
         isLoading={isLoading}
         messages={messages}
         activeModifications={activeModifications}
-        assumptions={assumptions}
-        onSendMessage={sendMessage}
-        onUpdateAssumption={updateAssumption}
-        onUpdateModification={updateModification}
-        onApply={runAndApplyForecast}
+        onSendMessage={onSendMessage}
+        onUpdateModification={onUpdateModification}
+        onApply={onApply}
       />
     </VStack>
   );
