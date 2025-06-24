@@ -10,21 +10,20 @@ const activeLinkStyle = {
 };
 
 const NavItem = ({ to, icon, children }: { to: string; icon: React.ElementType; children: React.ReactNode }) => (
-    <Link
-        as={NavLink}
-        to={to}
-        p={3}
-        borderRadius="md"
-        display="flex"
-        alignItems="center"
-        _hover={{ bg: 'whiteAlpha.200' }}
-        _activeLink={activeLinkStyle}
-    >
-        <Icon as={icon} mr={3} w={5} h={5} />
-        {children}
-    </Link>
+  <Link
+    as={NavLink}
+    to={to}
+    p={3}
+    borderRadius="md"
+    display="flex"
+    alignItems="center"
+    _hover={{ bg: 'whiteAlpha.200' }}
+    _activeLink={activeLinkStyle}
+  >
+    <Icon as={icon} mr={3} w={5} h={5} />
+    {children}
+  </Link>
 );
-
 
 export const Sidebar = () => {
   return (
@@ -44,9 +43,9 @@ export const Sidebar = () => {
           Brandon's Tacos
         </Heading>
         <VStack align="stretch" spacing={4}>
-            <NavItem to="/" icon={MdDashboard}>Dashboard</NavItem>
-            <NavItem to="/forecasting" icon={MdTimeline}>Forecasting</NavItem>
-            <NavItem to="/reports" icon={MdAssessment}>Reports</NavItem>
+          <NavItem to="/" icon={MdDashboard}>Dashboard</NavItem>
+          <NavItem to="/forecasting" icon={MdTimeline}>Forecasting</NavItem>
+          <NavItem to="/reports" icon={MdAssessment}>Reports</NavItem>
         </VStack>
       </VStack>
     </Box>

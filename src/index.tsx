@@ -1,17 +1,22 @@
 // src/index.tsx
-import * as React from 'react';
-import * as ReactDOM from 'react-dom/client';
-import { App } from './App';
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { ChakraProvider } from '@chakra-ui/react';
+import App from './App';
 import reportWebVitals from './reportWebVitals';
 import * as serviceWorker from './serviceWorker';
+// import your custom theme if you have one
+// import theme from './theme';
 
-const container = document.getElementById('root');
-if (!container) throw new Error('Failed to find the root element');
-const root = ReactDOM.createRoot(container);
+const root = ReactDOM.createRoot(
+  document.getElementById('root') as HTMLElement
+);
 
 root.render(
   <React.StrictMode>
-    <App />
+    <ChakraProvider /* theme={theme} */>
+      <App />
+    </ChakraProvider>
   </React.StrictMode>
 );
 

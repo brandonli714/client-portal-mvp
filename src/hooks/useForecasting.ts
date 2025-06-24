@@ -1,69 +1,36 @@
-// src/hooks/useForecasting.ts
 import { useState, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { MonthlyFinancials } from '../MonthlyFinancials';
-import nlp from 'compromise';
-import nlpDate from 'compromise-dates';
-nlp.plugin(nlpDate);
 
-// --- Type Definitions (Correct and Final) ---
-export interface Message {
-  id: string;
-  text: string;
-  sender: 'user' | 'bot';
-}
-
-interface Parameter {
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-}
-
-// This now supports two kinds of modifications
+export interface Message { id: string; text: string; sender: 'user' | 'bot'; }
 export type ModificationType = 'percentage' | 'fixed';
-
 export interface InteractiveModification {
-  id: string;
-  type: ModificationType;
-  target: {
-    category: 'revenue' | 'cogs' | 'expenses';
-    item: string;
-  };
-  // For 'percentage' type, this is a parameter object. For 'fixed', it's just a number.
-  parameter: Parameter | number;
-  // This is now a simple string description, not a template function
-  description: string;
-  explanation: string;
-  // Optional date for fixed changes
-  startDate?: Date;
+  id: string; type: ModificationType; category: string; item: string; value: number;
+  startDate?: string; description?: string;
 }
-
-interface PendingQuestion {
-  text: string;
-  handler: (responseText: string) => void;
+const createBotMessage = (text: string): Message => ({ id: uuidv4(), sender: 'bot', text });
+const safe = (v: any) => typeof v === 'number' && !isNaN(v) ? v : 0;
+function getNested(obj: any, path: string[]) {
+  return path.reduce((acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined), obj);
 }
-
-const createBotMessage = (text: string): Message => ({
-  id: uuidv4(),
-  sender: 'bot',
-  text,
-});
-
-const formatAsCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    }).format(value);
+function setNested(obj: any, path: string[], value: number) {
+  const lastKey = path[path.length - 1];
+  const parent = path.slice(0, -1).reduce((acc, key) => acc[key], obj);
+  parent[lastKey] = value;
 }
-
-// --- The Main Hook ---
+function findPath(obj: any, target: string, basePath: string[] = []): string[] | null {
+  if (typeof obj !== 'object' || obj === null) return null;
+  for (const key of Object.keys(obj)) {
+    if (key === target) return [...basePath, key];
+    const subPath = findPath(obj[key], target, [...basePath, key]);
+    if (subPath) return subPath;
+  }
+  return null;
+}
 export const useForecastingAI = (actuals: MonthlyFinancials[]) => {
   const [isModalOpen, setModalOpen] = useState(false);
   const [isLoading, setLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(null);
   const [activeModifications, setActiveModifications] = useState<InteractiveModification[]>([]);
   const [forecastData, setForecastData] = useState<MonthlyFinancials[] | null>(null);
 
@@ -73,161 +40,142 @@ export const useForecastingAI = (actuals: MonthlyFinancials[]) => {
     return {
       revenue: Object.keys(latest.revenue).filter(k => k !== 'total'),
       cogs: Object.keys(latest.cogs).filter(k => k !== 'total'),
-      expenses: ['wages', 'salaries', 'marketing', 'rent', 'utilities', 'posFees', 'deliveryCommissions', 'insurance', 'repairs'],
+      expenses: latest.expenses,
     };
   }, [actuals]);
-
-  const allAccounts = useMemo(() => [
-    ...chartOfAccounts.revenue,
-    ...chartOfAccounts.cogs,
-    ...chartOfAccounts.expenses
-  ], [chartOfAccounts]);
 
   const openModal = () => {
     setMessages([createBotMessage("Hello! Describe a change to model its financial impact.")]);
     setActiveModifications([]);
-    setPendingQuestion(null);
     setForecastData(null);
     setModalOpen(true);
   };
 
   const closeModal = () => setModalOpen(false);
-
-  const processNlp = (doc: any, text: string) => {
-    const foundTerms = doc.terms().out('array');
-    const verbs = doc.verbs().out('array');
-    const nouns = doc.nouns().out('array');
-    const dates = doc.dates().get();
-
-    let targetItem = '';
-    for (const term of [...nouns, ...foundTerms]) {
-        const match = allAccounts.find(acc => acc.toLowerCase() === term.toLowerCase());
-        if (match) {
-            targetItem = match;
-            break;
-        }
-    }
-
-    if (!targetItem) {
-        setPendingQuestion({
-            text: `I'm not sure which financial item you're referring to. Did you mean one of these: ${allAccounts.join(', ')}?`,
-            handler: (clarification) => {
-                const clarifiedItem = allAccounts.find(acc => acc.toLowerCase() === clarification.toLowerCase().trim());
-                if (clarifiedItem) {
-                    processNlp(nlp(text), text);
-                } else {
-                    setMessages(prev => [...prev, createBotMessage("I'm sorry, I couldn't identify that item. Please try rephrasing.")]);
-                }
-                setPendingQuestion(null);
-            }
-        });
-        return;
-    }
-
-    const category = chartOfAccounts.cogs.includes(targetItem) ? 'cogs'
-                   : chartOfAccounts.revenue.includes(targetItem) ? 'revenue'
-                   : 'expenses';
-
-    const date = dates.length > 0 ? dates[0].start : null;
-    const fixedCostIntent = verbs.some((v: any) => ['hire', 'add', 'set'].includes(v.toLowerCase()));
-
-    if (fixedCostIntent || date) {
-        setPendingQuestion({
-            text: `Okay, a fixed change to ${targetItem}. What is the expected monthly dollar amount?`,
-            handler: (responseText) => {
-                const amount = parseFloat(responseText.replace(/[^0-9.-]+/g, ''));
-                if (isNaN(amount)) {
-                    setMessages(prev => [...prev, createBotMessage("Please provide a monthly dollar amount.")]);
-                    setPendingQuestion(prev => prev);
-                    return;
-                }
-                const newModification: InteractiveModification = {
-                    id: uuidv4(), type: 'fixed',
-                    target: { category, item: targetItem },
-                    parameter: amount,
-                    startDate: date || new Date(),
-                    description: `Add ${formatAsCurrency(amount)}/month to ${targetItem}`,
-                    explanation: `Models a recurring fixed cost change.`,
-                };
-                setMessages(prev => [...prev, createBotMessage(`Okay, I've modeled that change. You can describe another change or apply the forecast.`)]);
-                setActiveModifications(prev => [...prev, newModification]);
-                setPendingQuestion(null);
-            }
-        });
-        return;
-    }
-
-    setPendingQuestion({
-        text: `Great. By what percentage should we change ${targetItem}?`,
-        handler: (responseText) => {
-            const percentage = parseFloat(responseText.replace(/[^0-9.-]+/g, ''));
-            if (isNaN(percentage)) {
-                setMessages(prev => [...prev, createBotMessage("Please provide a valid percentage.")]);
-                setPendingQuestion(prev => prev);
-                return;
-            }
-            const newModification: InteractiveModification = {
-                id: uuidv4(), type: 'percentage',
-                target: { category, item: targetItem },
-                parameter: { value: percentage, min: -50, max: 50, step: 1 },
-                description: `Change ${targetItem} by ${percentage.toFixed(2)}%`,
-                explanation: `Models a percentage change in ${targetItem}.`
-            };
-            setActiveModifications(prev => [...prev, newModification]);
-            setMessages(prev => [...prev, createBotMessage(`Okay, I've modeled that change. You can describe another change or apply the forecast.`)]);
-            setPendingQuestion(null);
-        }
-    });
-  };
-
   const onSendMessage = async (text: string) => {
-    setMessages(prev => [...prev, { id: uuidv4(), sender: 'user', text }]);
+    const newMessages: Message[] = [
+      ...messages,
+      { id: uuidv4(), sender: 'user', text }
+    ];
+    setMessages(newMessages);
     setLoading(true);
     try {
-        if (pendingQuestion) {
-            pendingQuestion.handler(text);
-        } else {
-            processNlp(nlp(text), text);
-        }
+      const response = await fetch('http://localhost:3001/api/forecast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userQuery: text,
+          actuals: actuals,
+          chartOfAccounts: chartOfAccounts,
+          conversationHistory: newMessages.slice(1),
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const result = await response.json();
+      if (result.responseType === 'question') {
+        setMessages(prev => [...prev, createBotMessage(result.data)]);
+      } else if (result.responseType === 'modification') {
+        const newModifications = result.data.map((mod: any) => ({ ...mod, id: uuidv4() }));
+        setActiveModifications(prev => [...prev, ...newModifications]);
+        setMessages(prev => [...prev, createBotMessage("Okay, I've modeled that change. You can describe another change or apply the forecast.")]);
+      }
     } catch (error) {
-        console.error("Error processing message:", error);
-        setMessages(prev => [...prev, createBotMessage("I encountered an error. Please try again.")]);
+      console.error("Error calling backend API:", error);
+      setMessages(prev => [...prev, createBotMessage("Sorry, I encountered an error. Please try again.")]);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
-
-  const onUpdateModification = (id: string, value: number) => {
-    setActiveModifications(prevMods => prevMods.map(mod => {
-      if (mod.id === id && mod.type === 'percentage') {
-        const newParam = { ...(mod.parameter as Parameter), value };
-        return { ...mod, parameter: newParam, description: `Change ${mod.target.item} by ${value.toFixed(2)}%` };
-      }
-      return mod;
-    }));
-  };
-
   const onApply = () => {
-     console.log("Applying modifications:", activeModifications);
-     closeModal();
+    setLoading(true);
+    const forecastMonths = 12;
+    const lastActual = actuals[actuals.length - 1];
+    let prevMonth = JSON.parse(JSON.stringify(lastActual));
+    const newForecast: MonthlyFinancials[] = [];
+    for (let i = 1; i <= forecastMonths; i++) {
+      const monthData = JSON.parse(JSON.stringify(prevMonth));
+      const forecastDate = new Date(prevMonth.date);
+      forecastDate.setMonth(forecastDate.getMonth() + 1);
+      monthData.date = forecastDate;
+
+      // Only apply modifications to the first forecast month
+      if (i === 1) {
+        activeModifications.forEach(mod => {
+          const modStartDate = mod.startDate ? new Date(mod.startDate) : null;
+          if (modStartDate && monthData.date < modStartDate) return;
+          let path: string[] | null = null;
+          if (mod.category === 'expenses') {
+            path = findPath(monthData.expenses, mod.item, ['expenses']);
+          } else if (mod.category in monthData) {
+            path = findPath(monthData[mod.category], mod.item, [mod.category]);
+          }
+          if (path) {
+            const current = getNested(monthData, path);
+            if (typeof current === 'number' && !isNaN(current)) {
+              let newValue = current;
+              if (mod.type === 'percentage') newValue = current * (1 + (mod.value / 100));
+              if (mod.type === 'fixed') newValue = current + mod.value;
+              setNested(monthData, path, newValue);
+            } else if (typeof current === 'object' && current !== null) {
+              // If the path points to an object, apply to all numeric children
+              Object.keys(current).forEach(key => {
+                if (typeof current[key] === 'number' && !isNaN(current[key])) {
+                  let newValue = current[key];
+                  if (mod.type === 'percentage') newValue = current[key] * (1 + (mod.value / 100));
+                  if (mod.type === 'fixed') newValue = current[key] + mod.value;
+                  current[key] = newValue;
+                }
+              });
+            } else {
+              console.warn('Modification skipped, not a number or object at path:', path.join('.'), mod);
+            }
+          } else {
+            console.warn('Could not find path for modification:', mod);
+          }
+        });
+      }
+
+      // Defensive: only set .total if parent is an object
+      if (typeof monthData.revenue === 'object' && monthData.revenue !== null) {
+        monthData.revenue.total = safe(monthData.revenue.inStore) + safe(monthData.revenue.delivery) + safe(monthData.revenue.catering);
+      }
+      if (typeof monthData.cogs === 'object' && monthData.cogs !== null) {
+        monthData.cogs.total = safe(monthData.cogs.food) + safe(monthData.cogs.beverages) + safe(monthData.cogs.packaging);
+      }
+      if (monthData.expenses && typeof monthData.expenses.labor === 'object' && monthData.expenses.labor !== null) {
+        monthData.expenses.labor.total = safe(monthData.expenses.labor.wages) + safe(monthData.expenses.labor.salaries);
+      }
+      if (monthData.expenses && typeof monthData.expenses.rentAndUtilities === 'object' && monthData.expenses.rentAndUtilities !== null) {
+        monthData.expenses.rentAndUtilities.total = safe(monthData.expenses.rentAndUtilities.rent) + safe(monthData.expenses.rentAndUtilities.utilities);
+      }
+      if (monthData.expenses && typeof monthData.expenses.gAndA === 'object' && monthData.expenses.gAndA !== null) {
+        monthData.expenses.gAndA.total = safe(monthData.expenses.gAndA.posFees) + safe(monthData.expenses.gAndA.deliveryCommissions) + safe(monthData.expenses.gAndA.insurance) + safe(monthData.expenses.gAndA.repairs);
+      }
+      if (monthData.expenses) {
+        monthData.expenses.total =
+          safe(monthData.expenses.labor && monthData.expenses.labor.total) +
+          safe(monthData.expenses.marketing) +
+          safe(monthData.expenses.rentAndUtilities && monthData.expenses.rentAndUtilities.total) +
+          safe(monthData.expenses.gAndA && monthData.expenses.gAndA.total);
+      }
+      monthData.netIncome = safe(monthData.revenue && monthData.revenue.total) - safe(monthData.cogs && monthData.cogs.total) - safe(monthData.expenses && monthData.expenses.total);
+
+      newForecast.push(monthData);
+      prevMonth = monthData;
+    }
+    setForecastData(newForecast);
+    setLoading(false);
+    closeModal();
   };
 
   const clearForecast = () => {
-      setForecastData(null);
+    setForecastData(null);
+    setActiveModifications([]);
   };
 
   return {
-    isModalOpen,
-    openModal,
-    closeModal,
-    isLoading,
-    messages,
-    activeModifications,
-    onSendMessage,
-    onUpdateModification,
-    onApply,
-    forecastData,
-    clearForecast,
-    assumptions: [],
+    isModalOpen, openModal, closeModal, isLoading, messages, activeModifications,
+    onSendMessage, onApply,
+    forecastData, clearForecast,
   };
 };

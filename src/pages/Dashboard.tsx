@@ -4,16 +4,40 @@ import {
   Flex, Heading, Select, VStack,
   Tabs, TabList, Tab, TabPanels, TabPanel, Box,
 } from '@chakra-ui/react';
-import { generateFinancialData } from '../utils/dataGenerator';
+import { staticFinancials } from '../staticFinancials';
 import { FinancialStatementTable } from '../components/FinancialStatementTable';
 import { SummaryCards } from '../components/SummaryCards';
 import { MonthlyChart } from '../components/MonthlyChart';
-import { ChartableData, DataType } from '../types';
+import { ChartableData } from '../types';
 import { MonthlyFinancials } from '../MonthlyFinancials';
 
-// Generate the data once
-const allData = generateFinancialData();
-const availableYears = Array.from(new Set(allData.map(d => d.date.getFullYear()))).sort((a, b) => b - a);
+// Helper to get year from date string or Date object
+function getYear(date: string | Date): number {
+  if (typeof date === 'string') {
+    return parseInt(date.split(' ')[1], 10);
+  }
+  return date.getFullYear();
+}
+
+// Helper to get month index (0 = Jan) from date string or Date object
+function getMonthIndex(date: string | Date): number {
+  if (typeof date === 'string') {
+    const [monthStr] = date.split(' ');
+    return [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ].indexOf(monthStr);
+  }
+  return date.getMonth();
+}
+
+// Convert all static financials to have Date objects for 'date'
+const allData = staticFinancials.map(entry => ({
+  ...entry,
+  date: typeof entry.date === 'string' ? new Date(entry.date) : entry.date,
+}));
+
+const availableYears = Array.from(new Set(allData.map(d => getYear(d.date)))).sort((a, b) => b - a);
 
 function transformToChartable(data: MonthlyFinancials[]): ChartableData[] {
   return data.map(d => ({
@@ -24,7 +48,9 @@ function transformToChartable(data: MonthlyFinancials[]): ChartableData[] {
     grossProfit: d.revenue.total - d.cogs.total,
     netIncome: d.netIncome,
     type: 'actual',
-    month: d.date.toLocaleString('default', { month: 'short' }) + ` '${d.date.getFullYear().toString().slice(2)}`
+    month: typeof d.date === 'string'
+      ? d.date
+      : d.date.toLocaleString('default', { month: 'short' }) + ` '${d.date.getFullYear().toString().slice(2)}`
   }));
 }
 
@@ -32,7 +58,7 @@ export const DashboardPage = () => {
   const [selectedYear, setSelectedYear] = useState(availableYears[0]);
 
   const actualDataForYear = useMemo(() => {
-    return allData.filter(d => d.date.getFullYear() === selectedYear);
+    return allData.filter(d => getYear(d.date) === selectedYear);
   }, [selectedYear]);
 
   const displayData = useMemo(() => {
@@ -47,19 +73,19 @@ export const DashboardPage = () => {
     const isCurrentYear = selectedYear === new Date().getFullYear();
 
     const annualTotals = dataToUse.reduce((acc, data) => {
-        acc.revenue += data.revenue.total;
-        acc.grossProfit += (data.revenue.total - data.cogs.total);
-        acc.netIncome += data.netIncome;
-        return acc;
+      acc.revenue += data.revenue.total;
+      acc.grossProfit += (data.revenue.total - data.cogs.total);
+      acc.netIncome += data.netIncome;
+      return acc;
     }, { revenue: 0, grossProfit: 0, netIncome: 0 });
 
-    const ytdTotals = actualDataForYear.reduce((acc, data) => {
-        const month = data.date.getMonth();
-        if (isCurrentYear && month <= currentMonthIndex) {
-            acc.ytdRevenue += data.revenue.total;
-            acc.ytdNetIncome += data.netIncome;
-        }
-        return acc;
+    const ytdTotals = dataToUse.reduce((acc, data) => {
+      const month = getMonthIndex(data.date);
+      if (isCurrentYear && month <= currentMonthIndex) {
+        acc.ytdRevenue += data.revenue.total;
+        acc.ytdNetIncome += data.netIncome;
+      }
+      return acc;
     }, { ytdRevenue: 0, ytdNetIncome: 0 });
 
     return { ...annualTotals, ...ytdTotals };

@@ -1,68 +1,48 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalFooter, ModalBody, ModalCloseButton,
-  Button, VStack, Box, Text, HStack, Slider, SliderTrack, SliderFilledTrack, SliderThumb,
+  Button, VStack, Box, Text, HStack,
   CircularProgress, Input, Divider
 } from '@chakra-ui/react';
-import { InteractiveModification, Message } from '../hooks/useForecasting';
+import { Message } from '../hooks/useForecasting';
 
-// Props for the main modal component
+// --- Self-Contained Type for Modifications ---
+// This is defined locally to prevent compiler errors from stale imports.
+interface LocalModification {
+  id: string;
+  type: 'percentage' | 'fixed';
+  category?: string;
+  item?: string;
+  value?: number;
+  startDate?: string;
+  description: string;
+  [key: string]: any;
+}
+
+// --- Props for the main modal component ---
 interface AssumptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
   isLoading: boolean;
   messages: Message[];
-  activeModifications: InteractiveModification[];
+  activeModifications: LocalModification[];
   onSendMessage: (text: string) => void;
-  onUpdateModification: (id: string, value: number) => void;
   onApply: () => void;
 }
 
-// A new, single helper component to display either a slider or fixed summary
-const AssumptionControl: React.FC<{ mod: InteractiveModification, onUpdate: (id: string, value: number) => void }> = ({ mod, onUpdate }) => {
-  // Renders a Percentage Slider
-  if (mod.type === 'percentage' && typeof mod.parameter === 'object') {
-    const param = mod.parameter;
-    const displayTransform = (v: number) => `${v.toFixed(0)}%`;
-
-    return (
-      <Box w="100%">
-        <HStack justify="space-between">
-            <Text fontWeight="bold">{mod.description}</Text>
-            <Text fontWeight="bold" color="blue.600">{displayTransform(param.value)}</Text>
-        </HStack>
-        <Text fontSize="sm" color="gray.600" mb={3}>{mod.explanation}</Text>
-        <Slider
-          value={param.value}
-          onChange={(value) => onUpdate(mod.id, value)}
-          min={param.min}
-          max={param.max}
-          step={param.step}
-        >
-          <SliderTrack><SliderFilledTrack /></SliderTrack>
-          <SliderThumb />
-        </Slider>
-      </Box>
-    );
-  }
-
-  // Renders a Fixed Cost Summary
-  if (mod.type === 'fixed') {
-    return (
-      <Box w="100%">
-        <Text fontWeight="bold">{mod.description}</Text>
-        <Text fontSize="sm" color="gray.600">{mod.explanation}</Text>
-      </Box>
-    );
-  }
-
-  return null; // Fallback
+// --- Helper component to display a single modification ---
+const AssumptionControl: React.FC<{ mod: LocalModification }> = ({ mod }) => {
+  return (
+    <Box w="100%" p={2}>
+      <Text fontWeight="normal">{mod.description}</Text>
+    </Box>
+  );
 };
 
-// Main Modal Component
+// --- Main Modal Component (Corrected and Rewritten) ---
 export const AssumptionsModal: React.FC<AssumptionsModalProps> = ({
   isOpen, onClose, isLoading, messages, activeModifications,
-  onSendMessage, onUpdateModification, onApply
+  onSendMessage, onApply
 }) => {
   const [text, setText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -123,9 +103,9 @@ export const AssumptionsModal: React.FC<AssumptionsModalProps> = ({
             {activeModifications.length > 0 && (
               <Box p={4} borderWidth={1} borderRadius="md" bg="blue.50">
                 <Text fontWeight="bold" mb={3} fontSize="lg">Active Scenario</Text>
-                <VStack spacing={4} divider={<Divider />}>
+                <VStack spacing={2} divider={<Divider />}>
                   {activeModifications.map((mod) => (
-                    <AssumptionControl key={mod.id} mod={mod} onUpdate={onUpdateModification} />
+                    <AssumptionControl key={mod.id} mod={mod} />
                   ))}
                 </VStack>
               </Box>
