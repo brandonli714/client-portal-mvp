@@ -1,24 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Box,
-  Button,
-  Heading,
   VStack,
+  Heading,
   Divider,
   Input,
   Spinner,
   Text,
   Flex,
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  ModalCloseButton,
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverBody,
+  PopoverFooter,
+  PopoverArrow,
+  PopoverCloseButton,
+  useDisclosure,
+  Textarea,
 } from '@chakra-ui/react';
 import { useForecastingAI } from '../hooks/useForecasting';
 import { staticFinancials } from '../staticFinancials';
+import Draggable from 'react-draggable';
+import { useBoolean } from '@chakra-ui/react';
+import { FaRobot, FaLightbulb } from 'react-icons/fa';
 
 // Helper to get nested values by path
 function getValueByPath(obj: any, path: string[]) {
@@ -105,11 +110,9 @@ function renderRows(
         m.item === (item.path ? item.path[item.path.length - 1] : '') &&
         m.category === (item.path ? item.path[0] : '')
     );
-    // Only use the last N actuals
     const actualValues = item.path
       ? actuals.slice(-monthsToShow).map((d: any) => getValueByPath(d, item.path))
       : [];
-    // For future months, fill with forecast if available, else null
     let futureValues: (number | null)[] = [];
     if (forecastData && forecastData.length > 0) {
       futureValues = forecastData.slice(0, futureMonths).map((d: any) => getValueByPath(d, item.path));
@@ -142,7 +145,6 @@ const MONTHS_TO_SHOW = 12;
 const FUTURE_MONTHS = 12;
 
 function getLastNMonthsDates(actuals: any[], n: number): Date[] {
-  // Sort by date ascending
   const sorted = [...actuals].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   return sorted.slice(-n).map(d => new Date(d.date));
 }
@@ -181,23 +183,55 @@ const ForecastingPage: React.FC = () => {
 
   // Insights feature state
   const [insights, setInsights] = useState<string | null>(null);
-  const [isInsightsOpen, setInsightsOpen] = useState(false);
   const [isInsightsLoading, setInsightsLoading] = useState(false);
+
+  // Floating bubble state
+  const [isForecastOpen, setForecastOpen] = useBoolean(false);
+  const [isInsightsOpen, setInsightsOpen] = useBoolean(false);
+
+  // State for editing assumptions
+  const [editingAssumption, setEditingAssumption] = useState<{
+    rowIdx: number;
+    mod: any;
+    value: string;
+  } | null>(null);
+  const { isOpen, onOpen, onClose } = useDisclosure();
+
+  // Handler to open assumption editor
+  const handleAssumptionClick = (rowIdx: number, mod: any) => {
+    setEditingAssumption({
+      rowIdx,
+      mod,
+      value: mod?.description || '',
+    });
+    onOpen();
+  };
+
+  // Handler to save assumption edit (stub, should connect to backend or state)
+  const handleSaveAssumption = () => {
+    // TODO: Implement save logic
+    onClose();
+    setEditingAssumption(null);
+  };
+
+  // Handler to cancel editing
+  const handleCancelAssumption = () => {
+    onClose();
+    setEditingAssumption(null);
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  // Table data and error handling
+  let error: string | null = null;
   let months: string[] = [];
   let tableRows: TableRow[] = [];
-  let error: string | null = null;
 
   try {
-    // Get last 12 months of actuals
     const last12Actuals = actuals.slice(-MONTHS_TO_SHOW);
     const last12Dates = getLastNMonthsDates(actuals, MONTHS_TO_SHOW);
-
-    // Get next 12 months
     const lastActualDate = last12Dates.length > 0 ? last12Dates[last12Dates.length - 1] : new Date();
     const next12Dates = getFutureMonths(lastActualDate, FUTURE_MONTHS);
 
@@ -238,7 +272,7 @@ const ForecastingPage: React.FC = () => {
   // Insights feature: fetch insights from backend
   const getInsights = async () => {
     setInsightsLoading(true);
-    setInsightsOpen(true);
+    setInsightsOpen.toggle();
     try {
       const response = await fetch('http://localhost:3001/api/insights', {
         method: 'POST',
@@ -254,23 +288,21 @@ const ForecastingPage: React.FC = () => {
     }
   };
 
+  const isRowModified = (item: TableRow) =>
+    item.isModified && item.modificationDescription;
+
+  const handleRowClick = (rowIdx: number, item: TableRow) => {
+    if (isRowModified(item)) {
+      handleAssumptionClick(rowIdx, { description: item.modificationDescription });
+    }
+  };
+
   return (
     <Box p={8} maxW="100vw" minH="100vh" bg="gray.50">
       <VStack spacing={6} align="stretch">
         <Heading as="h1" size="xl" color="blue.700">
           24-Month Financial Forecast
         </Heading>
-        <Flex gap={2}>
-          <Button colorScheme="blue" onClick={openModal}>
-            Create / Edit Forecast
-          </Button>
-          <Button variant="outline" colorScheme="gray" onClick={clearForecast}>
-            Clear Forecast
-          </Button>
-          <Button colorScheme="purple" onClick={getInsights}>
-            Get Business Insights
-          </Button>
-        </Flex>
         <Divider />
         {error ? (
           <Box color="red.500" p={4} borderRadius="md" bg="red.50">
@@ -283,61 +315,117 @@ const ForecastingPage: React.FC = () => {
               <thead>
                 <tr>
                   <th style={{ position: "sticky", left: 0, background: "#fff", zIndex: 2, minWidth: 180, textAlign: "left" }}>Line Item</th>
-                  {months.map((month, idx) => (
+                  {months.map((month: string, idx: number) => (
                     <th key={idx}>{month}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {tableRows.map((item, idx) => (
-                  <tr key={idx}>
-                    <td
+                {tableRows.map((item: TableRow, rowIdx: number) => {
+                  // Is this row modified for forecast?
+                  const rowIsModified = isRowModified(item);
+                  return (
+                    <tr
+                      key={rowIdx}
                       style={{
-                        paddingLeft: `${item.level * 24}px`,
-                        fontWeight: item.isGroup ? 'bold' : 'normal',
-                        background: item.isModified ? "#fffbe6" : "#fff",
-                        borderBottom: item.isGroup ? "2px solid #e2e8f0" : "1px solid #eee",
-                        fontSize: item.isGroup ? "1rem" : "0.98rem",
-                        verticalAlign: "middle",
-                        minWidth: 180,
+                        background: rowIsModified ? '#fffbe6' : undefined,
+                        cursor: rowIsModified ? 'pointer' : undefined,
                       }}
-                      title={item.modificationDescription || ""}
+                      onClick={() => rowIsModified ? handleRowClick(rowIdx, item) : undefined}
                     >
-                      {item.name}
-                      {item.isModified && item.modificationDescription && (
-                        <span style={{ color: "#faad14", marginLeft: 6, fontSize: 12 }}>
-                          &#9888; {item.modificationDescription}
-                        </span>
-                      )}
-                    </td>
-                    {item.values.map((value: number | null, colIdx: number) => (
                       <td
-                        key={colIdx}
                         style={{
-                          background: item.isModified ? "#fffbe6" : "#fff",
+                          paddingLeft: `${item.level * 24}px`,
+                          fontWeight: item.isGroup ? 'bold' : 'normal',
+                          borderBottom: item.isGroup ? "2px solid #e2e8f0" : "1px solid #eee",
+                          fontSize: item.isGroup ? "1rem" : "0.98rem",
+                          verticalAlign: "middle",
+                          minWidth: 180,
+                        }}
+                        title={item.modificationDescription || ""}
+                      >
+                        {item.name}
+                        {rowIsModified && item.modificationDescription && (
+                          <span style={{ color: "#faad14", marginLeft: 6, fontSize: 12 }}>
+                            &#9888; {item.modificationDescription}
+                          </span>
+                        )}
+                      </td>
+                      {item.values.map((value: number | null, colIdx: number) => {
+                        // Determine if this is an actuals or forecast column
+                        const isActual = colIdx < MONTHS_TO_SHOW;
+                        const isForecast = colIdx >= MONTHS_TO_SHOW;
+                        // Style
+                        const cellStyle: React.CSSProperties = {
+                          color: isActual ? 'green' : isForecast ? 'blue' : undefined,
+                          background: rowIsModified && isForecast ? '#fffbe6' : '#fff',
                           border: "1px solid #eee",
                           textAlign: "right",
                           padding: "4px 8px",
-                        }}
-                      >
-                        {value !== null ? value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : ''}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                          fontWeight: rowIsModified && isForecast ? 600 : undefined,
+                        };
+                        return (
+                          <td key={colIdx} style={cellStyle}>
+                            {value !== null ? value.toLocaleString(undefined, { maximumFractionDigits: 0 }) : ''}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </Box>
         )}
       </VStack>
 
-      {/* Conversational AI Modal */}
-      <Modal isOpen={isModalOpen} onClose={closeModal} size="lg" isCentered>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Forecasting Assistant</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+      {/* Assumption Edit Popover/Modal */}
+      {editingAssumption && (
+        <Box
+          position="fixed"
+          left="0"
+          right="0"
+          bottom="0"
+          zIndex={100}
+          bg="white"
+          borderTop="2px solid #3182ce"
+          boxShadow="0 -2px 16px rgba(0,0,0,0.08)"
+          p={6}
+          maxW="100vw"
+        >
+          <Flex justify="space-between" align="center" mb={2}>
+            <Heading size="md">Edit Assumption</Heading>
+            <Button size="sm" variant="ghost" onClick={handleCancelAssumption}>Close</Button>
+          </Flex>
+          <Textarea
+            value={editingAssumption.value}
+            onChange={e => setEditingAssumption({ ...editingAssumption, value: e.target.value })}
+            placeholder="Describe your assumption..."
+            mb={4}
+          />
+          <Flex justify="flex-end">
+            <Button colorScheme="blue" mr={2} onClick={handleSaveAssumption}>Save</Button>
+            <Button variant="ghost" onClick={handleCancelAssumption}>Cancel</Button>
+          </Flex>
+        </Box>
+      )}
+
+      {/* Forecasting Assistant Panel */}
+      {isForecastOpen && (
+        <Draggable>
+          <Box
+            position="fixed"
+            bottom="100px"
+            right="40px"
+            zIndex={30}
+            width="400px"
+            bg="white"
+            borderRadius="lg"
+            boxShadow="2xl"
+            p={4}
+          >
+            <Button size="sm" onClick={setForecastOpen.off} position="absolute" top={2} right={2}>Minimize</Button>
+            <Heading size="md" mb={2}>Forecasting Assistant</Heading>
             <Box
               maxH="300px"
               overflowY="auto"
@@ -381,49 +469,85 @@ const ForecastingPage: React.FC = () => {
               isDisabled={isLoading}
               autoFocus
             />
-          </ModalBody>
-          <ModalFooter>
-            <Button
-              colorScheme="blue"
-              mr={3}
-              onClick={handleSend}
-              isLoading={isLoading}
-              isDisabled={!input.trim()}
-            >
-              Send
-            </Button>
-            <Button
-              colorScheme="green"
-              onClick={onApply}
-              isDisabled={activeModifications.length === 0}
-            >
-              Apply Forecast
-            </Button>
-            <Button variant="ghost" onClick={closeModal}>
-              Close
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+            <Flex mt={2} gap={2}>
+              <Button
+                colorScheme="blue"
+                onClick={handleSend}
+                isLoading={isLoading}
+                isDisabled={!input.trim()}
+              >
+                Send
+              </Button>
+              <Button
+                colorScheme="green"
+                onClick={onApply}
+                isDisabled={activeModifications.length === 0}
+              >
+                Apply Forecast
+              </Button>
+              <Button variant="ghost" onClick={setForecastOpen.off}>
+                Close
+              </Button>
+            </Flex>
+          </Box>
+        </Draggable>
+      )}
+      {isInsightsOpen && (
+        <Draggable>
+          <Box
+            position="fixed"
+            bottom="100px"
+            right="40px"
+            zIndex={30}
+            width="700px"
+            maxWidth="95vw"
+            maxHeight="70vh"
+            bg="white"
+            borderRadius="lg"
+            boxShadow="2xl"
+            p={4}
+            overflowY="auto"
+            display="flex"
+            flexDirection="column"
+          >
+            <Button size="sm" onClick={setInsightsOpen.off} position="absolute" top={2} right={2}>Minimize</Button>
+            <Heading size="md" mb={2}>Business Insights</Heading>
+            <Box flex="1" overflowY="auto" whiteSpace="pre-line">
+              {isInsightsLoading ? (
+                <Spinner />
+              ) : (
+                <Box>{insights}</Box>
+              )}
+            </Box>
+            <Button mt={4} onClick={setInsightsOpen.off}>Close</Button>
+          </Box>
+        </Draggable>
+      )}
 
-      {/* Business Insights Modal */}
-      <Modal isOpen={isInsightsOpen} onClose={() => setInsightsOpen(false)} size="lg" isCentered>
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Business Insights</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            {isInsightsLoading ? (
-              <Spinner />
-            ) : (
-              <Box whiteSpace="pre-line">{insights}</Box>
-            )}
-          </ModalBody>
-          <ModalFooter>
-            <Button onClick={() => setInsightsOpen(false)}>Close</Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+      <Box position="fixed" bottom={6} right={6} zIndex={20}>
+        <VStack spacing={3}>
+          <Button
+            leftIcon={<FaRobot />}
+            colorScheme="blue"
+            borderRadius="full"
+            boxShadow="lg"
+            size="lg"
+            onClick={setForecastOpen.toggle}
+          >
+            Forecast
+          </Button>
+          <Button
+            leftIcon={<FaLightbulb />}
+            colorScheme="purple"
+            borderRadius="full"
+            boxShadow="lg"
+            size="lg"
+            onClick={getInsights}
+          >
+            Insights
+          </Button>
+        </VStack>
+      </Box>
     </Box>
   );
 };
